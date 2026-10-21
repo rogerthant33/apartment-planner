@@ -52,6 +52,10 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
   units are world cm. Map view→scene only at the input boundary. Geometry,
   snapping and fit checks take world coordinates only.
 - **No wall thickness.** Rooms are interior polygons; walls are their edges.
+  Room vertices run clockwise on screen (the model rejects anything else).
+  Never reverse a room's vertices without remapping its openings.
+- **Edit models with `.evolve(**changes)`**, never `model_copy(update=...)`,
+  which skips validation.
 - **Openings reference `edge_start_vertex_id`, never an edge index.**
 - **One user gesture = one undo entry.** Commit on mouse release or field
   Enter/focus-out, not on every move.
@@ -65,6 +69,21 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
 - **Never lose the last good save.** Save errors are surfaced and retried,
   never swallowed.
 - No network access at runtime.
+
+## Testing
+
+- **Every test must fail under some plausible mutation of the code.** No
+  padding: don't test library behaviour (pydantic, Shapely, Qt), don't repeat
+  a case another test already covers, and don't add property tests that only
+  restate an example test. Prefer boundary cases (just below and just above a
+  threshold such as `EPS` or `MIN_EDGE_LENGTH`).
+- Mutation testing (cosmic-ray) covers the pure packages:
+  `uv run python mutation/run.py` tests the committed HEAD in a throwaway
+  worktree and writes surviving mutants to `mutation/last-report.txt`. Run it
+  after changing `model/`, `geometry/`, `fit/` or `state/`, and kill every
+  survivor with a test. A truly equivalent mutant gets `# pragma: no mutate`
+  with a comment saying why.
+- Add new pure packages to `module-path` in `mutation/pure.toml`.
 
 ## Conventions
 

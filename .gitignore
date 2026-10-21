@@ -22,3 +22,7 @@ dist/
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+
+# Mutation testing sessions
+mutation/*.sqlite
+mutation/last-report.txt

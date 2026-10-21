@@ -317,10 +317,16 @@ window geometry are stored in `QSettings`.
 
 ## 11. Data model (schema v1)
 
-pydantic v2 models with `extra="forbid"` and `allow_inf_nan=False`. JSON field
-names are snake_case.
+pydantic v2 models with `extra="forbid"`, `allow_inf_nan=False` and
+`frozen=True`. Sequences are tuples in code (lists in JSON), so documents are
+immutable and undo snapshots can share them. JSON field names are snake_case.
+Edits use `Model.evolve(**changes)`, which re-runs validation
+(`model_copy(update=...)` doesn't).
 
-```python
+The authoritative definition is `src/apartment_planner/model/project.py`. This
+sketch summarises it and must be kept in step.
+
+```text
 ID = str          # uuid4 hex string, from model/ids.py
 
 class Point:      x: float; y: float
