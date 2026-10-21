@@ -70,6 +70,21 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
   never swallowed.
 - No network access at runtime.
 
+## Testing
+
+- **Every test must fail under some plausible mutation of the code.** No
+  padding: don't test library behaviour (pydantic, Shapely, Qt), don't repeat
+  a case another test already covers, and don't add property tests that only
+  restate an example test. Prefer boundary cases (just below and just above a
+  threshold such as `EPS` or `MIN_EDGE_LENGTH`).
+- Mutation testing (cosmic-ray) covers the pure packages:
+  `uv run python mutation/run.py` tests the committed HEAD in a throwaway
+  worktree and writes surviving mutants to `mutation/last-report.txt`. Run it
+  after changing `model/`, `geometry/`, `fit/` or `state/`, and kill every
+  survivor with a test. A truly equivalent mutant gets `# pragma: no mutate`
+  with a comment saying why.
+- Add new pure packages to `module-path` in `mutation/pure.toml`.
+
 ## Conventions
 
 - Prefer small pure functions with tests over logic in Qt classes.

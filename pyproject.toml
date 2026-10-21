@@ -44,6 +44,7 @@ qt_api = "pyside6"
 
 [dependency-groups]
 dev = [
+    "cosmic-ray>=8.7.0",
     "hypothesis>=6.170.5",
     "mypy>=2.4.0",
     "pytest>=9.1.1",

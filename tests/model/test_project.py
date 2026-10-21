@@ -12,7 +12,6 @@ from apartment_planner.model import (
     Group,
     Layout,
     Opening,
-    PolygonShape,
     ProjectDoc,
     RectShape,
     new_id,
@@ -88,13 +87,6 @@ def test_json_round_trip_is_lossless() -> None:
     assert restored == doc
 
 
-def test_shape_discriminator_restores_each_shape_type() -> None:
-    restored = ProjectDoc.model_validate_json(full_project().model_dump_json())
-
-    shapes = [f.shape for layout in restored.layouts for f in layout.furniture]
-    assert [type(s) for s in shapes] == [RectShape, EllipseShape, PolygonShape]
-
-
 def test_rotation_is_normalised_to_0_360() -> None:
     assert rect_item(10, 10, rotation=-90).rotation == 270
     assert rect_item(10, 10, rotation=450).rotation == 90
@@ -106,8 +98,6 @@ def test_evolve_revalidates_fields_and_references() -> None:
     assert rect_item(10, 10).evolve(rotation=-90).rotation == 270
     with pytest.raises(ValidationError, match="active_layout_id"):
         full_project().evolve(active_layout_id="nope")
-    with pytest.raises(ValidationError):
-        rect_item(10, 10).evolve(colour="#ff0000")
 
 
 def test_rejects_counter_clockwise_room() -> None:
@@ -160,11 +150,6 @@ def test_rejects_door_without_door_settings_and_window_with_them() -> None:
         Opening(kind="door", **common)
     with pytest.raises(ValidationError, match="door settings"):
         Opening(kind="window", door=DoorSpec(hinge="start", swing="in"), **common)
-
-
-def test_rejects_missing_active_layout() -> None:
-    with pytest.raises(ValidationError, match="active_layout_id"):
-        revalidate(full_project(), active_layout_id="nope")
 
 
 def test_rejects_empty_layouts() -> None:

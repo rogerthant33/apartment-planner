@@ -1,0 +1,11 @@
+# Mutation testing for the pure packages. See CLAUDE.md "Testing".
+# `uv run` in the test command: on Windows a bare `python` resolves to the
+# base interpreter, not the venv.
+[cosmic-ray]
+module-path = ["src/apartment_planner/geometry", "src/apartment_planner/model"]
+excluded-modules = ["src/apartment_planner/*/__init__.py"]
+timeout = 60.0
+test-command = "uv run --no-sync python -m pytest -x -q -p no:cacheprovider --hypothesis-profile=mutation tests/geometry tests/model"
+
+[cosmic-ray.distributor]
+name = "local"
