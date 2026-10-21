@@ -29,9 +29,23 @@ class InvalidProjectError(ProjectFileError):
 
     def __init__(self, problems: list[str]) -> None:
         self.problems = problems
-        super().__init__("The project file is damaged:\n" + "\n".join(problems))
+        super().__init__(
+            "The project file is damaged and can't be opened. If a copy ending in "
+            '".apartment.bak" is next to it, rename that copy to open the previous version.\n\n'
+            + "\n".join(problems)
+        )
 
 
 class ReadError(ProjectFileError):
-    def __init__(self, path: Path, reason: str) -> None:
-        super().__init__(f'Couldn\'t read "{path.name}": {reason}')
+    def __init__(self, path: Path, error: OSError) -> None:
+        super().__init__(f'Couldn\'t read "{path.name}": {describe_os_error(error)}.')
+
+
+class ProjectExistsError(ProjectFileError):
+    def __init__(self, path: Path) -> None:
+        super().__init__(f'A file named "{path.name}" already exists. Choose another name.')
+
+
+def describe_os_error(error: OSError) -> str:
+    """The OS's reason without the errno and path clutter, e.g. "No space left on device"."""
+    return error.strerror or str(error)

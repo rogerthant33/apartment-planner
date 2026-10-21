@@ -1,6 +1,8 @@
 """Reading and atomically writing project files on disk."""
 
+import contextlib
 import hashlib
+import logging
 import os
 import shutil
 from dataclasses import dataclass
@@ -8,9 +10,11 @@ from datetime import datetime
 from pathlib import Path
 
 from apartment_planner.persistence.archive import ProjectFile, decode, encode
-from apartment_planner.persistence.errors import NotAProjectError, ReadError
+from apartment_planner.persistence.errors import NotAProjectError, ProjectExistsError, ReadError
 
 SUFFIX = ".apartment"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -49,30 +53,60 @@ class Loaded:
 
 
 def read_project(path: Path) -> Loaded:
+    """Load a project. Never modifies the file, even when migrations run."""
     try:
         data = path.read_bytes()
+        fingerprint = Fingerprint._of_bytes(path, data)
     except OSError as error:
-        raise ReadError(path, error.strerror or str(error)) from error
+        raise ReadError(path, error) from error
     try:
         project = decode(data)
     except NotAProjectError as error:
         raise NotAProjectError(path) from error
-    return Loaded(project, Fingerprint._of_bytes(path, data))
+    return Loaded(project, fingerprint)
 
 
 def write_atomic(path: Path, data: bytes) -> Fingerprint:
     """Write via a temporary file in the same folder, so `path` is never half-written."""
     tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("wb") as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        # The original error is the one to report; a leftover .tmp is harmless.
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise
     return Fingerprint._of_bytes(path, data)
+
+
+def create_project_file(path: Path, project: ProjectFile) -> Fingerprint:
+    """Write a new project file. Refuses to replace an existing file."""
+    if path.exists():
+        raise ProjectExistsError(path)
+    return write_atomic(path, encode(project))
 
 
 def backup_path(path: Path) -> Path:
     return path.with_name(path.name + ".bak")
+
+
+def move_project_file(path: Path, target: Path) -> None:
+    """Rename a project file, and its backup if there is one."""
+    # A case-only rename on Windows or macOS finds the file itself at `target`.
+    if target.exists() and not path.samefile(target):
+        raise ProjectExistsError(target)
+    path.rename(target)
+    backup = backup_path(path)
+    if backup.exists():
+        try:
+            backup.replace(backup_path(target))
+        except OSError:
+            # The project itself has moved; a backup left under the old name still works.
+            log.warning("Couldn't rename %s", backup, exc_info=True)
 
 
 def conflict_path(path: Path, now: datetime) -> Path:
@@ -105,7 +139,7 @@ def save_project(
     `expected` is None for a file that shouldn't exist yet. On a conflict the
     project goes to a new conflict copy and the original is left untouched.
     """
-    on_disk_unchanged = expected.matches(path) if expected else not path.exists()
+    on_disk_unchanged = expected.matches(path) if expected is not None else not path.exists()
     if not on_disk_unchanged:
         target = conflict_path(path, now)
         return Saved(target, write_atomic(target, encode(project)), conflict=True)
