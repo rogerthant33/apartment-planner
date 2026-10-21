@@ -23,12 +23,15 @@ def kinds(issues: list[PolygonIssue]) -> list[IssueKind]:
 def test_signed_area_is_positive_for_clockwise_on_screen() -> None:
     assert signed_area(SQUARE_CW) == pytest.approx(10_000)
     assert signed_area(tuple(reversed(SQUARE_CW))) == pytest.approx(-10_000)
+    assert signed_area(points((0, 0), (3, 0), (0, 3))) == pytest.approx(4.5)
 
 
 def test_is_clockwise_treats_zero_area_as_clockwise() -> None:
     assert is_clockwise(SQUARE_CW)
     assert not is_clockwise(tuple(reversed(SQUARE_CW)))
     assert is_clockwise(points((0, 0), (50, 0), (100, 0)))
+    # Counter-clockwise with an area of only 0.5 cm².
+    assert not is_clockwise(points((0, 0), (0, 1), (1, 0)))
 
 
 def test_edge_lengths_wrap_around() -> None:
@@ -50,9 +53,10 @@ def test_too_few_vertices() -> None:
 
 
 def test_short_edge_reports_which_edge() -> None:
-    issues = validate_polygon(points((0, 0), (100, 0), (100, 0.9), (100, 100), (0, 100)))
+    issues = validate_polygon(points((0, 0), (100, 0), (100, 100), (0, 100), (0, 99.1)))
     assert kinds(issues) == [IssueKind.SHORT_EDGE]
-    assert issues[0].edge_index == 1
+    assert issues[0].edge_index == 3
+    assert issues[0].message == "Edge 4 is 0.90 cm long; edges must be at least 1 cm."
 
 
 def test_edge_of_exactly_minimum_length_is_allowed() -> None:

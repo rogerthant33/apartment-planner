@@ -36,8 +36,9 @@ def test_overlapping_boxes_overlap(angle: float) -> None:
     assert overlaps(a, b)
 
 
-@pytest.mark.parametrize(("depth", "expected"), [(0.9 * EPS, False), (1.1 * EPS, True)])
-def test_overlap_counts_only_beyond_eps(depth: float, expected: bool) -> None:
+# Absolute values pin EPS to the spec's 1 mm as well as the comparison.
+@pytest.mark.parametrize(("depth", "expected"), [(0.09, False), (0.11, True)])
+def test_overlap_counts_only_beyond_one_millimetre(depth: float, expected: bool) -> None:
     assert overlaps(box(0, 0, 100, 100), box(100 - depth, 0, 100, 100)) is expected
 
 

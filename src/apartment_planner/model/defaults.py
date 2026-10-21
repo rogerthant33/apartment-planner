@@ -8,7 +8,8 @@ def new_layout(name: str = "Layout 1") -> Layout:
     return Layout(id=new_id(), name=name)
 
 
-def new_project(name: str, *, now: datetime | None = None) -> ProjectDoc:
+# `*` → `/` still accepts every call that passes `now` by keyword.
+def new_project(name: str, *, now: datetime | None = None) -> ProjectDoc:  # pragma: no mutate
     """An empty project with one layout."""
     timestamp = now if now is not None else datetime.now(UTC)
     layout = new_layout()

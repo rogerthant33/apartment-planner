@@ -12,9 +12,10 @@ XY = tuple[float, float]
 
 
 class HasXY(Protocol):
-    @property
+    # Read-only for the type checker only; no runtime effect.
+    @property  # pragma: no mutate
     def x(self) -> float: ...
-    @property
+    @property  # pragma: no mutate
     def y(self) -> float: ...
 
 
@@ -26,7 +27,7 @@ def rotate_all(points: Iterable[XY], degrees: float) -> list[XY]:
 
 
 def rotate(point: XY, degrees: float) -> XY:
-    return rotate_all([point], degrees)[0]
+    return rotate_all([point], degrees)[0]  # pragma: no mutate (one item: [0] is [-1])
 
 
 def local_to_world_all(points: Iterable[XY], origin: XY, rotation: float) -> list[XY]:
@@ -35,7 +36,7 @@ def local_to_world_all(points: Iterable[XY], origin: XY, rotation: float) -> lis
 
 
 def local_to_world(point: XY, origin: XY, rotation: float) -> XY:
-    return local_to_world_all([point], origin, rotation)[0]
+    return local_to_world_all([point], origin, rotation)[0]  # pragma: no mutate (one item)
 
 
 def world_to_local(point: XY, origin: XY, rotation: float) -> XY:

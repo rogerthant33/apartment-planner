@@ -6,14 +6,18 @@ from pydantic import ValidationError
 
 from apartment_planner.model import (
     Apartment,
+    BackgroundImage,
     DoorSpec,
     EllipseShape,
     FurnitureItem,
     Group,
     Layout,
     Opening,
+    Point,
     ProjectDoc,
+    ProjectSettings,
     RectShape,
+    Room,
     new_id,
     new_project,
 )
@@ -63,6 +67,12 @@ def full_project() -> ProjectDoc:
     )
 
 
+def background(**changes: Any) -> BackgroundImage:
+    return BackgroundImage(
+        asset_id="a", mime_type="image/png", origin=Point(x=0, y=0), cm_per_pixel=1, **changes
+    )
+
+
 def revalidate(doc: ProjectDoc, **changes: Any) -> ProjectDoc:
     data = doc.model_dump(mode="json")
     data.update(changes)
@@ -77,6 +87,15 @@ def test_new_project_is_valid_with_one_active_layout() -> None:
     assert len(doc.layouts) == 1
     assert doc.active_layout is doc.layouts[0]
     assert ProjectDoc.model_validate(doc.model_dump()) == doc
+
+
+def test_layout_lookup_matches_ids_by_value() -> None:
+    doc = full_project()
+
+    for layout in doc.layouts:
+        assert doc.layout("".join(layout.id)) is layout  # an equal string, not the same one
+    with pytest.raises(KeyError):
+        doc.layout("missing")
 
 
 def test_json_round_trip_is_lossless() -> None:
@@ -133,9 +152,36 @@ def test_rejects_non_positive_dimensions() -> None:
         RectShape(width=0, depth=10)
 
 
-def test_rejects_rooms_and_polygons_with_fewer_than_three_points() -> None:
+def test_rooms_and_polygons_need_three_points() -> None:
+    triangle = rect_room(0, 0, 100, 100).vertices[:3]
+    Room(id="r", name="Nook", vertices=triangle)
+    polygon_shape((0, 0), (10, 0), (0, 10))
+
+    with pytest.raises(ValidationError):
+        Room(id="r", name="Nook", vertices=triangle[:2])
     with pytest.raises(ValidationError):
         polygon_shape((0, 0), (10, 0))
+
+
+def test_names_and_ids_must_not_be_empty() -> None:
+    Group(id="g", name="A")
+
+    with pytest.raises(ValidationError):
+        Group(id="g", name="")
+    with pytest.raises(ValidationError):
+        Group(id="", name="A")
+
+
+def test_rejects_negative_offsets() -> None:
+    with pytest.raises(ValidationError, match="offset"):
+        Opening(id="o", kind="window", room_id="r", edge_start_vertex_id="v", offset=-0.5, width=80)
+
+
+def test_background_opacity_is_between_0_and_1() -> None:
+    assert [background(opacity=o).opacity for o in (0, 1)] == [0, 1]
+    for bad in (-0.5, 1.5):
+        with pytest.raises(ValidationError):
+            background(opacity=bad)
 
 
 def test_rejects_door_without_door_settings_and_window_with_them() -> None:
@@ -153,17 +199,20 @@ def test_rejects_door_without_door_settings_and_window_with_them() -> None:
 
 
 def test_rejects_empty_layouts() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="layouts\n  Tuple should have at least 1 item"):
         revalidate(full_project(), layouts=[])
 
 
 def test_rejects_duplicate_ids_across_entities() -> None:
     doc = full_project()
-    data = doc.model_dump(mode="json")
-    data["layouts"][1]["furniture"][0]["id"] = doc.layouts[0].furniture[0].id
+    furniture = doc.model_dump(mode="json")
+    furniture["layouts"][1]["furniture"][0]["id"] = doc.layouts[0].furniture[0].id
+    vertex = doc.model_dump(mode="json")
+    vertex["apartment"]["rooms"][0]["vertices"][1]["id"] = doc.apartment.rooms[0].id
 
-    with pytest.raises(ValidationError, match="duplicate IDs"):
-        ProjectDoc.model_validate(data)
+    for data in (furniture, vertex):
+        with pytest.raises(ValidationError, match="duplicate IDs"):
+            ProjectDoc.model_validate(data)
 
 
 def test_rejects_opening_on_unknown_vertex() -> None:
@@ -201,9 +250,17 @@ def test_rejects_naive_timestamps() -> None:
         revalidate(full_project(), created_at="2026-10-21T12:00:00")
 
 
-def test_furniture_defaults() -> None:
+def test_defaults_follow_the_spec() -> None:
+    settings = ProjectSettings()
+    bg = background()
     sofa = FurnitureItem(id="f", name="Sofa", shape=RectShape(width=200, depth=90), x=0, y=0)
 
-    assert sofa.rotation == 0
-    assert sofa.locked is False
-    assert sofa.clearance is None
+    assert settings == ProjectSettings(
+        display_unit="cm",
+        grid_size=10,
+        snap_enabled=True,
+        default_clearance=60,
+        apartment_locked=False,
+    )
+    assert (bg.rotation, bg.opacity, bg.visible, bg.locked) == (0, 0.5, True, True)
+    assert (sofa.rotation, sofa.locked, sofa.clearance) == (0, False, None)

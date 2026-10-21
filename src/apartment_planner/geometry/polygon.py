@@ -22,7 +22,8 @@ def points_polygon(points: Iterable[HasXY]) -> Polygon:
 
 def _edges[T: HasXY](points: Sequence[T]) -> Iterator[tuple[T, T]]:
     """Each edge as (start, end), wrapping from the last point to the first."""
-    return zip(points, [*points[1:], points[0]], strict=True)
+    # Both sides have len(points) items by construction.
+    return zip(points, [*points[1:], points[0]], strict=True)  # pragma: no mutate
 
 
 def signed_area(points: Sequence[HasXY]) -> float:
@@ -50,7 +51,7 @@ class IssueKind(StrEnum):
     NO_AREA = "no_area"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)  # pragma: no mutate (immutability is a convention; nothing assigns)
 class PolygonIssue:
     kind: IssueKind
     message: str

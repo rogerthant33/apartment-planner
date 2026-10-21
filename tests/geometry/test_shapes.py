@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
@@ -29,10 +31,13 @@ def test_placed_rect_rotates_clockwise_about_its_position() -> None:
     ]
 
 
-def test_ellipse_uses_shared_segment_count_and_its_own_radii() -> None:
+def test_ellipse_is_a_regular_polygon_with_the_shared_segment_count() -> None:
     poly = placed_polygon(item(EllipseShape(rx=60, ry=40)))
-    assert len(corners(poly)) == ELLIPSE_SEGMENTS
+    n = ELLIPSE_SEGMENTS
+    assert len(corners(poly)) == n
     assert poly.bounds == pytest.approx((-60, -40, 60, 40))
+    # An inscribed n-gon, stretched to the radii: no skipped or doubled-back points.
+    assert poly.area == pytest.approx(n / 2 * math.sin(2 * math.pi / n) * 60 * 40)
 
 
 def test_polygon_shape_is_offset_by_position() -> None:
@@ -49,13 +54,20 @@ def test_room_polygon_uses_vertices_in_order() -> None:
     ]
 
 
+def test_l_shape_arm_may_be_thin() -> None:
+    assert len(l_shape(width=250, depth=160, arm_width=0.5, arm_depth=0.5).points) == 6
+
+
 def test_l_shape_area_and_bounds() -> None:
-    poly = placed_polygon(item(l_shape(width=250, depth=160, arm_width=90, arm_depth=90)))
-    assert poly.bounds == pytest.approx((-125, -80, 125, 80))
-    assert poly.area == pytest.approx(250 * 90 + 90 * (160 - 90))
+    poly = placed_polygon(item(l_shape(width=255, depth=165, arm_width=90, arm_depth=60)))
+    assert poly.bounds == pytest.approx((-127.5, -82.5, 127.5, 82.5))
+    assert poly.area == pytest.approx(255 * 60 + 90 * (165 - 60))
 
 
-@pytest.mark.parametrize(("arm_width", "arm_depth"), [(0, 50), (250, 50), (50, 0), (50, 160)])
-def test_l_shape_rejects_arm_as_big_as_the_whole(arm_width: float, arm_depth: float) -> None:
+@pytest.mark.parametrize(
+    ("arm_width", "arm_depth"),
+    [(0, 50), (-10, 50), (250, 50), (260, 50), (50, 0), (50, -10), (50, 160), (50, 170)],
+)
+def test_l_shape_rejects_arm_outside_the_whole(arm_width: float, arm_depth: float) -> None:
     with pytest.raises(ValueError, match="arm"):
         l_shape(width=250, depth=160, arm_width=arm_width, arm_depth=arm_depth)

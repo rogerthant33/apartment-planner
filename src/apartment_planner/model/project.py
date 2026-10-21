@@ -31,8 +31,9 @@ NonNegative = Annotated[float, Field(ge=0)]
 
 def _normalise_degrees(value: float) -> float:
     degrees = value % 360.0
-    # Tiny negative angles round up to exactly 360.
-    return 0.0 if degrees == 360.0 else degrees
+    # Tiny negative angles round up to exactly 360. (`%` never exceeds 360, so `==`
+    # and `>=` are equivalent here.)
+    return 0.0 if degrees == 360.0 else degrees  # pragma: no mutate
 
 
 Degrees = Annotated[float, AfterValidator(_normalise_degrees)]
@@ -98,7 +99,9 @@ class Opening(Model):
 
     @model_validator(mode="after")
     def _door_spec_matches_kind(self) -> Self:
-        if (self.kind == "door") != (self.door is not None):
+        # `kind` is a validated Literal and "door" sorts first, so `is`, `<=` and
+        # `is not` mutants behave the same.
+        if (self.kind == "door") != (self.door is not None):  # pragma: no mutate
             raise ValueError("door settings must be given for doors and only for doors")
         return self
 
@@ -228,7 +231,8 @@ class ProjectDoc(Model):
 def _reference_problems(doc: ProjectDoc) -> list[str]:
     problems: list[str] = []
 
-    duplicates = sorted(i for i, n in Counter(doc.all_ids()).items() if n > 1)
+    # Counts are at least 1, so `> 1` and `!= 1` are equivalent.
+    duplicates = sorted(i for i, n in Counter(doc.all_ids()).items() if n > 1)  # pragma: no mutate
     if duplicates:
         problems.append(f"duplicate IDs: {', '.join(duplicates)}")
 

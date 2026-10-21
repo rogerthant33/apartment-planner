@@ -19,7 +19,8 @@ def is_substantial(region: BaseGeometry, eps: float = EPS) -> bool:
     noise along shared edges) are not substantial.
     """
     # Too small to hold the disk at all; also skips the buffer for touching edges.
-    if region.area < math.pi * eps**2 / 4:
+    # Only a shortcut: the buffer test below gives the same answer.
+    if region.area < math.pi * eps**2 / 4:  # pragma: no mutate
         return False
     return not region.buffer(-eps / 2).is_empty
 
