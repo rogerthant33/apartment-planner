@@ -4,13 +4,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from apartment_planner.geometry import (
-    ELLIPSE_SEGMENTS,
-    l_shape,
-    placed_polygon,
-    room_polygon,
-    shape_outline,
-)
+from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
+from apartment_planner.geometry.shapes import l_shape, placed_polygon, room_polygon, shape_outline
 from apartment_planner.model import EllipseShape, RectShape
 from tests.factories import item, polygon_shape, rect_item, rect_room
 

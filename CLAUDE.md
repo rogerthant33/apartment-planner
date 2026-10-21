@@ -52,6 +52,10 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
   units are world cm. Map view→scene only at the input boundary. Geometry,
   snapping and fit checks take world coordinates only.
 - **No wall thickness.** Rooms are interior polygons; walls are their edges.
+  Room vertices run clockwise on screen (the model rejects anything else).
+  Never reverse a room's vertices without remapping its openings.
+- **Edit models with `.evolve(**changes)`**, never `model_copy(update=...)`,
+  which skips validation.
 - **Openings reference `edge_start_vertex_id`, never an edge index.**
 - **One user gesture = one undo entry.** Commit on mouse release or field
   Enter/focus-out, not on every move.

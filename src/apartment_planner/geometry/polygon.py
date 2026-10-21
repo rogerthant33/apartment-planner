@@ -1,22 +1,28 @@
-"""Plain polygon maths on vertex sequences, and polygon validation."""
+"""Plain polygon maths on vertex sequences, and polygon validation.
+
+The model imports this module, so it must not import `apartment_planner.model`.
+"""
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
 
 from shapely.geometry import Polygon
-from shapely.validation import explain_validity
+from shapely.validation import make_valid
 
 from apartment_planner.geometry.constants import MIN_EDGE_LENGTH
+from apartment_planner.geometry.overlap import is_substantial
+from apartment_planner.geometry.transform import HasXY
 
 
-class HasXY(Protocol):
-    @property
-    def x(self) -> float: ...
-    @property
-    def y(self) -> float: ...
+def points_polygon(points: Iterable[HasXY]) -> Polygon:
+    return Polygon([(p.x, p.y) for p in points])
+
+
+def _edges[T: HasXY](points: Sequence[T]) -> Iterator[tuple[T, T]]:
+    """Each edge as (start, end), wrapping from the last point to the first."""
+    return zip(points, [*points[1:], points[0]], strict=True)
 
 
 def signed_area(points: Sequence[HasXY]) -> float:
@@ -24,24 +30,17 @@ def signed_area(points: Sequence[HasXY]) -> float:
 
     Note this is the opposite of Shapely's `is_ccw`, which assumes y up.
     """
-    total = 0.0
-    for i, a in enumerate(points):
-        b = points[(i + 1) % len(points)]
-        total += a.x * b.y - b.x * a.y
-    return total / 2.0
+    return sum(a.x * b.y - b.x * a.y for a, b in _edges(points)) / 2.0
 
 
-def ensure_clockwise[T: HasXY](points: Sequence[T]) -> tuple[T, ...]:
-    """Return the points in clockwise-on-screen order, reversing if needed."""
-    return tuple(points) if signed_area(points) >= 0 else tuple(reversed(points))
+def is_clockwise(points: Sequence[HasXY]) -> bool:
+    """Clockwise on screen. Degenerate (zero-area) outlines count as clockwise."""
+    return signed_area(points) >= 0
 
 
 def edge_lengths(points: Sequence[HasXY]) -> list[float]:
     """Length of each edge i, running from points[i] to points[i + 1] (wrapping)."""
-    return [
-        math.hypot(points[(i + 1) % len(points)].x - p.x, points[(i + 1) % len(points)].y - p.y)
-        for i, p in enumerate(points)
-    ]
+    return [math.hypot(b.x - a.x, b.y - a.y) for a, b in _edges(points)]
 
 
 class IssueKind(StrEnum):
@@ -73,16 +72,14 @@ def validate_polygon(points: Sequence[HasXY]) -> list[PolygonIssue]:
         if length < MIN_EDGE_LENGTH
     ]
 
-    polygon = Polygon([(p.x, p.y) for p in points])
-    # A polygon thinner than a minimum edge in every direction has no usable area.
-    min_area = MIN_EDGE_LENGTH**2
-    if polygon.convex_hull.area < min_area or (polygon.is_valid and polygon.area < min_area):
+    polygon = points_polygon(points)
+    if not is_substantial(make_valid(polygon)):
         issues.append(PolygonIssue(IssueKind.NO_AREA, "The shape has no area."))
     elif not polygon.is_valid:
         issues.append(
             PolygonIssue(
                 IssueKind.SELF_INTERSECTION,
-                f"The outline crosses itself ({explain_validity(polygon)}).",
+                "The outline crosses itself. Move a corner so no edges cross.",
             )
         )
     return issues

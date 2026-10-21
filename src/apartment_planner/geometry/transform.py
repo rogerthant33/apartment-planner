@@ -5,21 +5,37 @@ screen, matching Qt's QGraphicsItem.setRotation.
 """
 
 import math
+from collections.abc import Iterable
+from typing import Protocol
 
 XY = tuple[float, float]
 
 
-def rotate(point: XY, degrees: float) -> XY:
-    """Rotate a point about the origin, clockwise on screen."""
+class HasXY(Protocol):
+    @property
+    def x(self) -> float: ...
+    @property
+    def y(self) -> float: ...
+
+
+def rotate_all(points: Iterable[XY], degrees: float) -> list[XY]:
+    """Rotate points about the origin, clockwise on screen."""
     radians = math.radians(degrees)
     cos, sin = math.cos(radians), math.sin(radians)
-    x, y = point
-    return (x * cos - y * sin, x * sin + y * cos)
+    return [(x * cos - y * sin, x * sin + y * cos) for x, y in points]
+
+
+def rotate(point: XY, degrees: float) -> XY:
+    return rotate_all([point], degrees)[0]
+
+
+def local_to_world_all(points: Iterable[XY], origin: XY, rotation: float) -> list[XY]:
+    ox, oy = origin
+    return [(x + ox, y + oy) for x, y in rotate_all(points, rotation)]
 
 
 def local_to_world(point: XY, origin: XY, rotation: float) -> XY:
-    rx, ry = rotate(point, rotation)
-    return (rx + origin[0], ry + origin[1])
+    return local_to_world_all([point], origin, rotation)[0]
 
 
 def world_to_local(point: XY, origin: XY, rotation: float) -> XY:

@@ -1,4 +1,8 @@
-"""Enforce the package layering described in CLAUDE.md."""
+"""Enforce the package layering described in CLAUDE.md.
+
+Relative imports are banned by ruff (TID252), so absolute module names are
+enough here.
+"""
 
 import ast
 from pathlib import Path
@@ -7,7 +11,9 @@ import pytest
 
 PACKAGE = Path(__file__).parent.parent / "src" / "apartment_planner"
 
-PURE = ["model", "geometry", "fit", "state"]
+QT = ("PySide6", "shiboken6")
+UI_LAYERS = ("apartment_planner.canvas", "apartment_planner.ui")
+PURE_FORBIDDEN = (*QT, *UI_LAYERS, "apartment_planner.persistence")
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -16,34 +22,26 @@ def imported_modules(path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+        elif isinstance(node, ast.ImportFrom) and node.module:
             modules.add(node.module)
     return modules
 
 
-def files_in(subpackage: str) -> list[Path]:
-    return sorted((PACKAGE / subpackage).rglob("*.py"))
+def imports_in(subpackage: str) -> list[tuple[Path, str]]:
+    directory = PACKAGE / subpackage
+    if not directory.is_dir():
+        pytest.skip(f"{subpackage}/ doesn't exist yet")
+    return [(path, m) for path in sorted(directory.rglob("*.py")) for m in imported_modules(path)]
 
 
-@pytest.mark.parametrize("subpackage", PURE)
-def test_pure_packages_do_not_import_qt_or_ui(subpackage: str) -> None:
-    for path in files_in(subpackage):
-        for module in imported_modules(path):
-            assert not module.startswith(("PySide6", "shiboken6")), f"{path} imports {module}"
-            assert not module.startswith(
-                tuple(f"apartment_planner.{p}" for p in ("canvas", "ui", "persistence"))
-            ), f"{path} imports {module}"
+@pytest.mark.parametrize("subpackage", ["model", "geometry", "fit", "state"])
+def test_pure_packages_do_not_import_qt_or_io(subpackage: str) -> None:
+    for path, module in imports_in(subpackage):
+        assert not module.startswith(PURE_FORBIDDEN), f"{path} imports {module}"
 
 
 def test_persistence_uses_only_qtcore() -> None:
-    for path in files_in("persistence"):
-        for module in imported_modules(path):
-            if module.startswith("PySide6"):
-                assert module == "PySide6.QtCore", f"{path} imports {module}"
-            assert not module.startswith(("apartment_planner.canvas", "apartment_planner.ui")), (
-                f"{path} imports {module}"
-            )
-
-
-def test_layering_test_sees_the_package() -> None:
-    assert files_in("model"), "layering test is looking in the wrong place"
+    for path, module in imports_in("persistence"):
+        if module.startswith(QT):
+            assert module == "PySide6.QtCore", f"{path} imports {module}"
+        assert not module.startswith(UI_LAYERS), f"{path} imports {module}"

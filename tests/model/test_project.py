@@ -44,9 +44,7 @@ def full_project() -> ProjectDoc:
         width=120,
     )
     group = Group(id=new_id(), name="Dining set")
-    table = item(EllipseShape(rx=60, ry=60), 200, 150).model_copy(
-        update={"group_id": group.id, "room_id": room.id}
-    )
+    table = item(EllipseShape(rx=60, ry=60), 200, 150).evolve(group_id=group.id, room_id=room.id)
     layout_a = Layout(
         id=new_id(),
         name="Sofa by window",
@@ -59,12 +57,10 @@ def full_project() -> ProjectDoc:
         furniture=(item(polygon_shape((0, 0), (100, 0), (100, 50), (0, 50))),),
     )
     base = new_project("Flat", now=NOW)
-    return base.model_copy(
-        update={
-            "apartment": Apartment(rooms=(room,), openings=(door, window)),
-            "layouts": (layout_a, layout_b),
-            "active_layout_id": layout_b.id,
-        }
+    return base.evolve(
+        apartment=Apartment(rooms=(room,), openings=(door, window)),
+        layouts=(layout_a, layout_b),
+        active_layout_id=layout_b.id,
     )
 
 
@@ -103,6 +99,22 @@ def test_rotation_is_normalised_to_0_360() -> None:
     assert rect_item(10, 10, rotation=-90).rotation == 270
     assert rect_item(10, 10, rotation=450).rotation == 90
     assert rect_item(10, 10, rotation=360).rotation == 0
+    assert rect_item(10, 10, rotation=-1e-20).rotation == 0
+
+
+def test_evolve_revalidates_fields_and_references() -> None:
+    assert rect_item(10, 10).evolve(rotation=-90).rotation == 270
+    with pytest.raises(ValidationError, match="active_layout_id"):
+        full_project().evolve(active_layout_id="nope")
+    with pytest.raises(ValidationError):
+        rect_item(10, 10).evolve(colour="#ff0000")
+
+
+def test_rejects_counter_clockwise_room() -> None:
+    room = rect_room(0, 0, 400, 300)
+
+    with pytest.raises(ValidationError, match="counter-clockwise"):
+        room.evolve(vertices=tuple(reversed(room.vertices)))
 
 
 def test_models_are_frozen() -> None:

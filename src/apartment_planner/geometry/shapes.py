@@ -1,11 +1,12 @@
-"""The only place model objects become Shapely geometry."""
+"""Model objects to Shapely geometry. Build footprints only through these helpers."""
 
 import math
 
 from shapely.geometry import Polygon
 
 from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
-from apartment_planner.geometry.transform import XY, local_to_world
+from apartment_planner.geometry.polygon import points_polygon
+from apartment_planner.geometry.transform import XY, local_to_world_all
 from apartment_planner.model import (
     EllipseShape,
     Placed,
@@ -16,6 +17,11 @@ from apartment_planner.model import (
     Shape,
 )
 
+_UNIT_CIRCLE = [
+    (math.cos(2 * math.pi * i / ELLIPSE_SEGMENTS), math.sin(2 * math.pi * i / ELLIPSE_SEGMENTS))
+    for i in range(ELLIPSE_SEGMENTS)
+]
+
 
 def shape_outline(shape: Shape) -> list[XY]:
     """Outline of a shape in its local coordinates, before rotation."""
@@ -24,22 +30,18 @@ def shape_outline(shape: Shape) -> list[XY]:
             hw, hd = w / 2, d / 2
             return [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
         case EllipseShape(rx=rx, ry=ry):
-            step = 2 * math.pi / ELLIPSE_SEGMENTS
-            return [
-                (rx * math.cos(i * step), ry * math.sin(i * step)) for i in range(ELLIPSE_SEGMENTS)
-            ]
+            return [(rx * c, ry * s) for c, s in _UNIT_CIRCLE]
         case PolygonShape(points=points):
             return [(p.x, p.y) for p in points]
 
 
 def placed_polygon(item: Placed) -> Polygon:
     """World-space footprint of a furniture item or obstacle."""
-    origin = (item.x, item.y)
-    return Polygon([local_to_world(p, origin, item.rotation) for p in shape_outline(item.shape)])
+    return Polygon(local_to_world_all(shape_outline(item.shape), (item.x, item.y), item.rotation))
 
 
 def room_polygon(room: Room) -> Polygon:
-    return Polygon([(v.x, v.y) for v in room.vertices])
+    return points_polygon(room.vertices)
 
 
 def l_shape(width: float, depth: float, arm_width: float, arm_depth: float) -> PolygonShape:

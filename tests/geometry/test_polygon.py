@@ -1,13 +1,14 @@
 import pytest
 
-from apartment_planner.geometry import (
+from apartment_planner.geometry.polygon import (
     IssueKind,
     PolygonIssue,
     edge_lengths,
-    ensure_clockwise,
+    is_clockwise,
     signed_area,
     validate_polygon,
 )
+from apartment_planner.geometry.shapes import l_shape
 from apartment_planner.geometry.transform import rotate
 from tests.factories import points
 
@@ -24,9 +25,9 @@ def test_signed_area_is_positive_for_clockwise_on_screen() -> None:
     assert signed_area(tuple(reversed(SQUARE_CW))) == pytest.approx(-10_000)
 
 
-def test_ensure_clockwise_reverses_only_when_needed() -> None:
-    assert ensure_clockwise(SQUARE_CW) == SQUARE_CW
-    assert ensure_clockwise(tuple(reversed(SQUARE_CW))) == SQUARE_CW
+def test_is_clockwise() -> None:
+    assert is_clockwise(SQUARE_CW)
+    assert not is_clockwise(tuple(reversed(SQUARE_CW)))
 
 
 def test_edge_lengths_wrap_around() -> None:
@@ -38,8 +39,7 @@ def test_valid_square_has_no_issues() -> None:
 
 
 def test_valid_concave_l_shape_has_no_issues() -> None:
-    l_shape = points((0, 0), (200, 0), (200, 80), (80, 80), (80, 160), (0, 160))
-    assert validate_polygon(l_shape) == []
+    assert validate_polygon(l_shape(200, 160, 80, 80).points) == []
 
 
 @pytest.mark.parametrize("angle", [0, 90, 37])
@@ -71,6 +71,11 @@ def test_sliver_has_no_area() -> None:
     assert IssueKind.NO_AREA in kinds(
         validate_polygon(points((0, 0), (100, 0), (100, 0.004), (0, 0.004)))
     )
+
+
+def test_long_thin_triangle_has_no_area() -> None:
+    # Over 1 cm² of area, but nowhere thicker than EPS.
+    assert kinds(validate_polygon(points((0, 0), (1000, 0), (500, 0.004)))) == [IssueKind.NO_AREA]
 
 
 def test_bowtie_is_self_intersecting() -> None:

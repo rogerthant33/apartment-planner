@@ -1,12 +1,12 @@
 """Persisted project document (schema v1). See docs/SPEC.md §11.
 
 Models are frozen and use tuples, so a document can be shared safely between
-undo snapshots. Edits create new instances.
+undo snapshots. Edits create new instances with `evolve()`.
 """
 
 from collections import Counter
 from collections.abc import Iterator
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -18,6 +18,8 @@ from pydantic import (
     model_validator,
 )
 
+from apartment_planner.geometry.polygon import is_clockwise
+
 CURRENT_SCHEMA_VERSION = 1
 
 ID = Annotated[str, StringConstraints(min_length=1)]
@@ -28,7 +30,9 @@ NonNegative = Annotated[float, Field(ge=0)]
 
 
 def _normalise_degrees(value: float) -> float:
-    return value % 360.0
+    degrees = value % 360.0
+    # Tiny negative angles round up to exactly 360.
+    return 0.0 if degrees == 360.0 else degrees
 
 
 Degrees = Annotated[float, AfterValidator(_normalise_degrees)]
@@ -36,6 +40,13 @@ Degrees = Annotated[float, AfterValidator(_normalise_degrees)]
 
 class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
+
+    def evolve(self, **changes: Any) -> Self:
+        """A copy with `changes` applied, re-running this model's validators.
+
+        Use this instead of `model_copy(update=...)`, which skips validation.
+        """
+        return self.model_validate({**self.__dict__, **changes})
 
 
 class Point(Model):
@@ -58,9 +69,16 @@ class ProjectSettings(Model):
 class Room(Model):
     id: ID
     name: Name
-    # World cm, clockwise on screen (y down). Normalised by the editor.
+    # World cm, clockwise on screen (y down). Openings rely on this to know
+    # which side of an edge is inside the room.
     vertices: tuple[Vertex, ...] = Field(min_length=3)
     color: Color | None = None
+
+    @model_validator(mode="after")
+    def _vertices_clockwise(self) -> Self:
+        if not is_clockwise(self.vertices):
+            raise ValueError(f"room {self.name!r} has its corners in counter-clockwise order")
+        return self
 
 
 class DoorSpec(Model):
@@ -214,7 +232,7 @@ def _reference_problems(doc: ProjectDoc) -> list[str]:
     if duplicates:
         problems.append(f"duplicate IDs: {', '.join(duplicates)}")
 
-    if all(layout.id != doc.active_layout_id for layout in doc.layouts):
+    if doc.active_layout_id not in {layout.id for layout in doc.layouts}:
         problems.append(f"active_layout_id {doc.active_layout_id!r} is not a layout")
 
     rooms = {room.id: room for room in doc.apartment.rooms}
@@ -223,7 +241,7 @@ def _reference_problems(doc: ProjectDoc) -> list[str]:
         room = rooms.get(opening.room_id)
         if room is None:
             problems.append(f"{where}.room_id {opening.room_id!r} is not a room")
-        elif all(v.id != opening.edge_start_vertex_id for v in room.vertices):
+        elif opening.edge_start_vertex_id not in {v.id for v in room.vertices}:
             problems.append(
                 f"{where}.edge_start_vertex_id {opening.edge_start_vertex_id!r} "
                 f"is not a vertex of room {room.name!r}"
