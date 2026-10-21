@@ -1,4 +1,4 @@
-"""The project open in the window: its document, file session and autosave."""
+"""The project open in the window: its editor state, file session and autosave."""
 
 import time
 from collections.abc import Callable
@@ -7,12 +7,15 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from apartment_planner.canvas.signals import EditorSignals
 from apartment_planner.model import ProjectDoc
 from apartment_planner.persistence.archive import ProjectFile
 from apartment_planner.persistence.autosave import SaveStatus
 from apartment_planner.persistence.autosaver import Autosaver
 from apartment_planner.persistence.library import project_name, project_path, save_copy
 from apartment_planner.persistence.session import ProjectSession
+from apartment_planner.state.editor import EditorState
+from apartment_planner.state.rooms import with_default_lock
 
 STATUS_TEXT = {
     SaveStatus.SAVED: "Saved",
@@ -42,13 +45,21 @@ class OpenProject(QObject):
     ) -> None:
         super().__init__(parent)
         self.session = session
-        self.doc = project.doc
+        # The default lock is a view of the document, not an edit: it isn't saved
+        # unless something else changes.
+        self.editor = EditorState(with_default_lock(project.doc))
+        self.signals = EditorSignals(self.editor, self)
         self._assets = project.assets
         self._now = now
         self._autosaver: Autosaver | None = None
         if not session.read_only:
             self._autosaver = Autosaver(self._save, clock=clock, parent=self)
             self._autosaver.status_changed.connect(self.status_changed)
+            self.editor.on_document_changed(self._autosaver.changed)
+
+    @property
+    def doc(self) -> ProjectDoc:
+        return self.editor.doc
 
     @property
     def path(self) -> Path:
@@ -72,12 +83,6 @@ class OpenProject(QObject):
     def save_error(self) -> str | None:
         return self._autosaver.error if self._autosaver else None
 
-    def update(self, doc: ProjectDoc) -> None:
-        """Take a committed change and schedule a save."""
-        self.doc = doc
-        if self._autosaver is not None:
-            self._autosaver.changed()
-
     def flush(self) -> bool:
         """Save now if needed. True when nothing is left unsaved."""
         return self._autosaver is None or self._autosaver.flush()
@@ -85,7 +90,7 @@ class OpenProject(QObject):
     def rename(self, name: str) -> None:
         old = self.path
         self.session.rename(project_path(old.parent, name))
-        self.update(self.doc.evolve(name=name))
+        self.editor.update_untracked(self.doc.evolve(name=name))
         self.renamed.emit(old)
 
     def save_copy(self, path: Path) -> None:

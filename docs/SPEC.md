@@ -91,17 +91,22 @@ after confirmation), Show in Folder, and changing the projects folder.
 ### Rooms
 
 - Draw rectangular rooms (drag) or polygon rooms (click points, close on the
-  first point or with Enter).
-- Edit vertices by dragging; edit edge lengths numerically (the edge's end
-  vertex moves along the edge direction).
+  first point or with Enter; Backspace removes the last point, Escape
+  cancels). New rooms are named "Room 1", "Room 2", … and selected.
+- Edit vertices by dragging; edit edge lengths numerically in the properties
+  panel (edges are numbered from the first vertex; the edge's end vertex
+  moves along the edge direction).
 - Insert a vertex on an edge (double-click); delete a vertex (select + Delete,
   minimum 3).
 - Add, rename, duplicate and delete rooms. Each room has a name label at its
-  centroid and shows its area.
+  centroid (or inside it, for shapes whose centroid falls outside) and shows
+  its area. The selected room shows its edge lengths. A duplicate is named
+  "<name> copy", copies the room's openings and is offset by 50 cm. Deleting
+  a room deletes its openings and unassigns furniture placed in it.
 - Adjacent rooms share boundaries by snapping vertices and edges together.
   There is no wall graph: each room owns its polygon.
-- Vertex snapping: to other rooms' vertices, then to their edges, then to the
-  grid.
+- Vertex snapping: to other rooms' vertices, then to their edges (both within
+  10 px on screen), then to the grid.
 
 ### Validation
 
@@ -134,8 +139,9 @@ edited only while the apartment is unlocked.
 
 ### Apartment lock
 
-When locked (the default once rooms exist), rooms, openings and obstacles can't
-be selected or moved, so furniture arranging can't disturb them.
+When locked, rooms, openings and obstacles can't be selected or moved, so
+furniture arranging can't disturb them. A project that has rooms always opens
+locked; that alone doesn't count as a change to save.
 
 ## 6. Furniture
 
@@ -458,6 +464,8 @@ through the current loader. Breaking a fixture is a failing test.
   computed in world coordinates and committed, and the scene re-syncs from the
   document.
 - Switching layouts is not an undoable action; edits inside a layout are.
+  The project name and settings (units, grid, snapping, apartment lock) are
+  not undoable either: undo and redo keep their current values.
 
 ## 13. Visual design
 
