@@ -1,0 +1,50 @@
+[project]
+name = "apartment-planner"
+version = "0.1.0"
+description = "Private 2D apartment planner: rooms, furniture layouts and fit checks."
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.14.1",
+    "pyside6-essentials>=6.12.0",
+    "shapely>=2.2.0",
+]
+
+[project.scripts]
+apartment-planner = "apartment_planner.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.8.14,<0.9"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "N", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+qt_api = "pyside6"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.5",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-qt>=4.5.0",
+    "ruff>=0.17.1",
+    "types-shapely>=2.1.0.20260728",
+]

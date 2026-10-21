@@ -317,8 +317,9 @@ window geometry are stored in `QSettings`.
 
 ## 11. Data model (schema v1)
 
-pydantic v2 models with `extra="forbid"` and `allow_inf_nan=False`. JSON field
-names are snake_case.
+pydantic v2 models with `extra="forbid"`, `allow_inf_nan=False` and
+`frozen=True`. Sequences are tuples in code (lists in JSON), so documents are
+immutable and undo snapshots can share them. JSON field names are snake_case.
 
 ```python
 ID = str          # uuid4 hex string, from model/ids.py
