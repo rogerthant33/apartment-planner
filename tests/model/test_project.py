@@ -90,7 +90,10 @@ def test_new_project_is_valid_with_one_active_layout() -> None:
 
 
 def test_layout_lookup_matches_ids_by_value() -> None:
-    doc = full_project()
+    # Fixed IDs in neither ascending nor descending order, so no comparison but ==
+    # finds each one.
+    layouts = tuple(Layout(id=f"layout-{name}", name=name) for name in "bca")
+    doc = new_project("Flat", now=NOW).evolve(layouts=layouts, active_layout_id="layout-b")
 
     for layout in doc.layouts:
         assert doc.layout("".join(layout.id)) is layout  # an equal string, not the same one
