@@ -1,11 +1,12 @@
-# Apartment Planner — MVP Specification (v2)
+# Apartment Planner — MVP Specification (v3)
 
 This is the source of truth for scope. It revises the original brief. When the
 code and this document disagree, fix one of them; don't let them drift.
 
 ## 1. Overview
 
-A private, browser-based 2D apartment planner for two people. Draw the
+A private 2D apartment planner for two people, built as a cross-platform
+Python desktop app (Windows first; macOS must also work). You draw the
 apartment's rooms using interior measurements, add doors, windows and fixed
 obstacles, then try out several furniture layouts and check what fits.
 
@@ -13,69 +14,76 @@ obstacles, then try out several furniture layouts and check what fits.
 
 - Accurate real-world dimensions; the screen is only a view.
 - Simple, direct editing with immediate visual feedback.
-- Never lose work: automatic local saving, visible save status, easy backups.
-- Fully local: no backend, accounts, AI, or network dependency after first load.
+- Never lose work: automatic saving to the project file, visible save status,
+  atomic writes.
+- Fully local: no backend, accounts, AI or network access.
 
 **Changes from the original brief**
 
+- **Desktop app in Python** (PySide6) instead of a browser app. A project is a
+  single `.apartment` file on disk, which replaces IndexedDB and the separate
+  export/import format. Sharing means sending the file or keeping it in a
+  shared cloud folder.
 - **No wall thickness.** Rooms are interior floor polygons, which is what you
   measure with a tape. Walls are the polygon edges.
-- **Multiple furniture layouts per apartment.** Apartment geometry is shared;
-  each layout holds its own furniture.
-- **One export format:** a single `.apartment.json` file with images embedded.
-  No ZIP.
+- **Multiple furniture layouts per apartment.** The apartment geometry is
+  shared; each layout has its own furniture.
 - **Additions:** door swing arcs count in fit checks, keyboard shortcuts, plan
-  export (PNG / print-to-PDF), offline support via a service worker, persistent
-  storage requests, backup reminders, single-tab editing locks.
+  export to PNG and PDF, lock files and conflict detection for shared folders.
 
 ## 2. Technology
 
 | Concern | Choice |
 | --- | --- |
-| App | Vite + React + TypeScript (strict) |
-| Canvas | Konva via react-konva (presentation only) |
-| State / undo | zustand + immer (patches for history) |
-| Persistence | IndexedDB via `idb` |
-| Validation / migration | zod |
-| Polygon booleans | `polygon-clipping` (or a maintained fork; check before adding) |
-| Offline | `vite-plugin-pwa` (precache app shell) |
-| Tests | vitest, `fake-indexeddb` for persistence; Playwright (Node) for E2E later |
-
-All other geometry primitives are written in-house in `src/geometry/` and unit
-tested.
+| Language | Python 3.13 |
+| Project / env | uv (`pyproject.toml`, `uv.lock`) |
+| UI / canvas | PySide6 (Qt 6): `QGraphicsView` / `QGraphicsScene` |
+| Geometry | Shapely 2 |
+| Data model / validation | pydantic v2 |
+| Tests | pytest, hypothesis (geometry properties), pytest-qt (UI) |
+| Lint / format / types | ruff, mypy (strict, pydantic plugin) |
+| Packaging | PyInstaller, one build per OS (milestone 7) |
 
 ## 3. Interface
 
-Desktop-first, three columns.
+Desktop-first main window with three columns.
 
-- **Left sidebar:** project menu (new, open, rename, duplicate, delete, import,
-  export), layout switcher (add, rename, duplicate, delete layouts), tools,
-  object list with visibility toggles.
-- **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels,
-  warnings. Zoom, pan, selection, drag, resize, rotate.
-- **Right sidebar:** properties of the selection (numeric dimensions, position,
+- **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
+  tools, object list with visibility toggles.
+- **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels and
+  warnings. Zoom, pan, selection, drag, resize and rotate.
+- **Right panel:** properties of the selection (numeric dimensions, position,
   rotation, label, color, notes, metadata), actions (duplicate, delete, lock,
   group), and the warnings list for the current layout.
-- **Top bar:** undo/redo, save status (Saving… / Saved / Save failed —
-  retrying), "Apartment locked" toggle, export plan.
+- **Toolbar:** undo/redo, "Apartment locked" toggle, export plan. The **status
+  bar** shows save status: Saving… / Saved / Save failed — retrying /
+  Read-only.
+- **Menus:** File (New, Open…, Open Recent, Save a Copy As…, Rename…,
+  Show in Folder, Export Plan…, Close), Edit, View, Help.
 
-A persistent, dismissible notice explains that projects live in this browser
-only and that exports are the backup. Show "Last exported: …" per project and
-a gentle reminder when it's more than 14 days old (or never) and the project has
-changed since.
+### Start screen
+
+Shown when no project is open. It lists `.apartment` files in the projects
+folder (default `Documents/Apartment Planner/`, configurable) plus recent files
+from elsewhere, with name and last-modified time, newest first. Actions: New,
+Open…, Rename, Duplicate, Delete (moves to the OS trash after confirmation),
+Show in Folder.
 
 ## 4. Coordinates and units
 
-- World units are **centimetres**, stored as floats. +x right, +y down (matches
-  the canvas). Rotation is in **degrees, clockwise**, about the object's origin.
-- One viewport transform (`scale`, `offsetX`, `offsetY`) maps world↔screen.
-  Zoom and pan only change the viewport, never the document.
-- All geometry, snapping and fit checks run in world coordinates. Screen
-  coordinates are converted at the input boundary and nowhere else.
+- World units are **centimetres**, stored as floats. +x right, +y down. Rotation
+  is in **degrees, clockwise**, about the object's origin. This matches Qt
+  scene coordinates exactly.
+- **Scene units are world cm.** Zoom and pan are only the `QGraphicsView`
+  transform and never change the document.
+- All geometry, snapping and fit checks run in world coordinates. View
+  coordinates are mapped to scene coordinates at the input boundary
+  (`mapToScene`) and nowhere else.
 - Display unit: mm / cm / m. It only affects formatting and parsing of input.
-- Grid size is configurable (default 10 cm). Snapping can be toggled; hold
-  Alt to suspend it during a drag.
-- Dimension labels use a constant screen size regardless of zoom.
+- Grid size is configurable (default 10 cm). Snapping can be toggled; hold Alt
+  to suspend it during a drag.
+- Dimension labels keep a constant screen size
+  (`ItemIgnoresTransformations`).
 
 ## 5. Apartment editor
 
@@ -87,7 +95,7 @@ changed since.
   vertex moves along the edge direction).
 - Insert a vertex on an edge (double-click); delete a vertex (select + Delete,
   minimum 3).
-- Add, rename, duplicate, delete rooms. Each room has a name label at its
+- Add, rename, duplicate and delete rooms. Each room has a name label at its
   centroid and shows its area.
 - Adjacent rooms share boundaries by snapping vertices and edges together.
   There is no wall graph: each room owns its polygon.
@@ -96,16 +104,16 @@ changed since.
 
 ### Validation
 
-A room or polygon is valid when it has ≥ 3 vertices, no self-intersections, no
-edge shorter than 1 cm, and positive area. Invalid edits show a red preview
-while dragging and **revert on release** with a message saying why. Numeric
-input that would produce invalid geometry is rejected inline. Overlapping
-rooms are allowed but produce a warning.
+A room or polygon is valid when it has ≥ 3 vertices, no edge shorter than 1 cm,
+and is a valid simple polygon (Shapely `is_valid`, positive area). Invalid
+edits show a red preview while dragging and **revert on release** with a
+message saying why. Numeric input that would produce invalid geometry is
+rejected inline. Overlapping rooms are allowed but produce a warning.
 
 ### Doors and windows (openings)
 
-- Placed on a room edge, referenced by `roomId` + `edgeStartVertexId` + `offset`
-  (cm from the edge start to the opening's centre) + `width`.
+- Placed on a room edge, referenced by `room_id` + `edge_start_vertex_id` +
+  `offset` (cm from the edge start to the opening's centre) + `width`.
 - Because they reference a vertex ID, not an edge index, they stay attached
   when other vertices are added or removed. When an edge's length changes, the
   offset is clamped so the opening stays on the edge. If the referenced vertex
@@ -141,13 +149,14 @@ be selected or moved, so furniture arranging can't disturb them.
 ### Properties
 
 `id`, `name`, `category?`, `shape`, `x`, `y` (world position of the local
-origin), `rotation`, `color?`, `notes?`, `roomId?`, `locked`, `groupId?`,
+origin), `rotation`, `color?`, `notes?`, `room_id?`, `locked`, `group_id?`,
 `clearance?` (cm, overrides the project default), `meta?` (`product`, `url`,
 `price`).
 
 ### Manipulation
 
-- Select (click, Shift+click, marquee), drag, move multiple selected items.
+- Select (click, Shift+click, rubber band), drag, move multiple selected
+  items.
 - Resize with handles or numeric input; rotate with a handle (snaps to 15°
   increments, hold Alt for free rotation) or numeric input.
 - Duplicate, delete, rename, group/ungroup (groups select and move together),
@@ -162,6 +171,8 @@ edge lengths while drawing and after creation. Edit vertices by dragging or
 numerically. Validated like rooms.
 
 ### Keyboard shortcuts
+
+Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 
 | Key | Action |
 | --- | --- |
@@ -178,21 +189,25 @@ numerically. Validated like rooms.
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
 | V, M, P | Select tool, rectangle room tool, polygon tool |
+| Ctrl+S | Save now (flush autosave) |
+| Ctrl+N / Ctrl+O | New / Open |
 
-Shortcuts are ignored while focus is in a text input.
+Shortcuts are ignored while a text field has focus.
 
 ## 7. Fit checking
 
-Pure functions in `src/fit/` that take the apartment plus a layout and return a
-list of findings. Recomputed (memoised) whenever the apartment or the active
-layout changes.
+Pure functions in `fit/` that take the apartment plus a layout and return a
+list of `Finding`s. Recomputed after every committed change (cached by document
+revision).
 
-**Tolerance.** Touching, or overlapping by less than 1 mm (`EPS = 0.1` cm), is
-not a collision, so furniture flush against a wall or another item doesn't
-trigger a warning.
+**Tolerance.** An overlap counts only if the intersection region contains a
+disk of diameter `EPS = 0.1` cm, implemented as
+`not intersection.buffer(-EPS / 2).is_empty`. Touching, or slivers thinner than
+1 mm, are not collisions, so furniture flush against a wall or another item
+doesn't trigger a warning.
 
-**Curves.** Ellipses are approximated as 48-gons for checks. Rendering uses the
-true shape.
+**Curves.** Ellipses are converted to 48-segment polygons by one shared helper.
+Rendering uses the true ellipse.
 
 | Check | Severity |
 | --- | --- |
@@ -204,252 +219,271 @@ true shape.
 | Item's clearance zone intersects another item, obstacle or wall | warning |
 | Rooms overlap each other | warning |
 
-- Clearance is measured as minimum polygon-to-polygon distance, which is exact
-  and needs no offsetting. The clearance zone is drawn as a translucent
-  rounded outline (wide stroke with round joins) behind the item.
-- Collisions are red, warnings amber. Affected items are outlined; the
-  right-sidebar list explains each finding, and clicking one selects the items.
+- Clearance violation means `distance(a, b) < clearance - EPS`. The clearance
+  zone is drawn as `polygon.buffer(clearance)`, translucent, behind the item.
+- Collisions are red, warnings amber. Affected items are outlined; the right
+  panel explains each finding, and clicking one selects the items.
 - Selecting two items shows the minimum distance between them. Selecting one
-  item shows its distance to the nearest wall on each side (left, right, up,
-  down along its rotated axes).
+  item shows its distance to the nearest wall along its rotated axes (left,
+  right, front, back).
 - Nothing is ever blocked. Findings are informational.
 
-## 8. Local storage
+## 8. Project files and saving
 
-### IndexedDB layout (`apartment-planner` database)
+### File format: `<name>.apartment`
 
-| Store | Key | Value |
-| --- | --- | --- |
-| `projects` | `id` | `ProjectDoc` |
-| `assets` | `[projectId, assetId]` | `{ projectId, assetId, blob, mimeType, width, height }` |
-| `meta` | `key` | small app-level records (e.g. `lastExportAt:<projectId>`) |
+A ZIP archive:
 
-Images are stored as Blobs once and never rewritten by autosave.
+```
+project.json         # { "format": "apartment-planner", "schema_version": 1, "project": {...} }
+assets/<asset_id>.<ext>   # background images, stored uncompressed (ZIP_STORED)
+```
 
-### Project management
-
-New, rename, open, duplicate (copies assets), delete (with confirmation;
-deletes assets). The project list shows name and last-modified time, newest
-first.
+- `project.json` is deflate-compressed, UTF-8 and pretty-printed (2-space
+  indent, stable key order), so it's readable after unzipping and diffs
+  cleanly.
+- It contains everything needed to rebuild the project and nothing derived:
+  no viewport, selection, undo history or findings.
 
 ### Autosave
 
-- The store updates immediately. Persistence is debounced at **750 ms** after
-  the last change.
-- At most one write is in flight. Changes made during a write schedule another
-  write when it finishes, so the latest state always wins.
-- On failure: status shows "Save failed — retrying", then retries with backoff
-  (1 s, 2 s, 5 s, then every 10 s). In-memory state is kept. IndexedDB
-  transactions are atomic, so the last good version stays intact.
-- Flush immediately on `visibilitychange` → hidden and on manual Save
-  (Ctrl+S). Warn on `beforeunload` while a save is pending or failing.
-- **Single-tab editing:** acquire a Web Lock (`navigator.locks`) named after
-  the project ID. If another tab holds it, open read-only with an explanation.
+- Edits update the in-memory document immediately. A save is scheduled
+  **750 ms** after the last committed change.
+- Save procedure: write the full archive to `<name>.apartment.tmp` in the same
+  folder → flush and `fsync` → `os.replace` onto the real file. The previous
+  file stays intact until the replace succeeds.
+- The first save in each session first copies the existing file to
+  `<name>.apartment.bak` (one generation), so a bad session can be undone
+  outside the app.
+- Only one save runs at a time. Changes made during a save trigger another
+  save when it finishes.
+- On failure (disk full, permissions, a file held by antivirus or a sync
+  client): the status shows "Save failed — retrying" with the reason on hover,
+  then retries after 1 s, 2 s and 5 s, then every 10 s. The in-memory document
+  is kept.
+- Saves flush immediately on Ctrl+S, on switching projects, and on quit.
+  Quitting while a save is failing asks: retry, save a copy elsewhere, or quit
+  without saving.
 
-### Durability
+### Sharing between two people
 
-- Call `navigator.storage.persist()` after the first project is created and
-  show the result in settings ("Storage: persistent / may be cleared by the
-  browser").
-- Explain the browser-local limitation in the UI (see §3).
+Projects may live in a shared cloud folder (Dropbox, OneDrive, iCloud).
 
-## 9. Export and import
+- **Lock file:** opening a project creates `<name>.apartment.lock` (Qt
+  `QLockFile`, holding user, host and PID; stale locks are detected). If
+  someone else holds the lock, the project opens **read-only** with a banner
+  saying who has it open, plus an option to save an editable copy.
+- **External-change detection:** remember the file's size, mtime and SHA-256
+  after each load or save. Before each save, if the file on disk has changed,
+  don't overwrite it. Save to `<name> (conflict <date>).apartment` instead and
+  show a banner explaining what happened.
 
-### Plan file: `<name>.apartment.json`
+### Project management
 
-```json
-{
-  "format": "apartment-planner",
-  "schemaVersion": 1,
-  "exportedAt": "2026-10-21T12:00:00.000Z",
-  "project": { "...": "ProjectDoc" },
-  "assets": {
-    "<assetId>": { "mimeType": "image/png", "width": 2000, "height": 1400, "data": "<base64>" }
-  }
-}
-```
+New (choose a name; created in the projects folder), Open, Open Recent, Rename
+(renames the file, refused while it's locked), Save a Copy As (new project
+ID), Delete (to OS trash, with confirmation), Show in Folder. Recent files and
+window geometry are stored in `QSettings`.
 
-- Contains everything needed to rebuild the project. No viewport, selection,
-  undo history or derived geometry.
-- Base64 exists only in the export file, never in IndexedDB.
+### Loading
 
-### Import
+1. Open the ZIP and read `project.json`. Check that `format` matches.
+2. If `schema_version` is newer than the app's, refuse with "This file was
+   made by a newer version of Apartment Planner".
+3. Run migrations one version at a time up to the current version, then
+   validate with the pydantic model.
+4. Check that every referenced asset exists in the archive.
+5. Errors name the problem and the failing field path. A file that fails to
+   load is never modified.
 
-1. Parse JSON. Check that `format` matches and `schemaVersion` ≤ the app's
-   current version; reject newer versions with "This file was made by a newer
-   version".
-2. Run migrations one version at a time to the current version, then validate
-   with the current zod schema. Errors name the failing path.
-3. Ask the user: **Import as new project** (default), or **Replace** an existing
-   project with the same ID if one exists (with confirmation).
-4. A new import gets a new project ID. Entity IDs inside the project are kept,
-   because they only need to be unique within a project. Assets are stored
-   under the new project ID.
-
-### Plan image export
+## 9. Plan export
 
 - **PNG:** render the active layout (rooms, labels, dimensions, openings,
-  furniture, plus a scale bar and title) off-screen at 2× pixel ratio, fitted to
-  the content bounds. Warnings are optional and off by default.
-- **PDF:** a print view of the same rendering with a print stylesheet, via the
-  browser's print dialog ("Save as PDF"). No PDF library.
+  furniture, a scale bar and a title) with `QGraphicsScene.render` into a
+  `QImage` at roughly 150 px per metre of plan (configurable), fitted to the
+  content bounds. Warnings are optional and off by default.
+- **PDF:** the same rendering through `QPdfWriter`, A4 or A3, portrait or
+  landscape, printed **to a stated scale** (1:50 or 1:100) when it fits,
+  otherwise fit-to-page with the scale bar shown.
 
 ## 10. Background floor-plan image
 
-- Import a PNG, JPG or WebP image and store it as an asset Blob.
+- Import a PNG, JPG or WebP image; it's stored as an asset in the project
+  file.
 - **Two-point calibration:** click two points on the image and enter the real
   distance between them. Then position (drag) and optionally rotate the image.
 - Opacity, visibility and lock controls. Rooms can be traced over it.
-- Calibration is saved in the project. The image travels in exports.
+- The calibration is saved in the project.
 
 ## 11. Data model (schema v1)
 
-```ts
-type ID = string;                    // crypto.randomUUID()
-interface Point { x: number; y: number }
+pydantic v2 models with `extra="forbid"` and `allow_inf_nan=False`. JSON field
+names are snake_case.
 
-interface ProjectDoc {
-  schemaVersion: 1;
-  id: ID;
-  name: string;
-  createdAt: string;                 // ISO 8601
-  updatedAt: string;
-  settings: ProjectSettings;
-  apartment: Apartment;
-  layouts: Layout[];                 // at least one
-  activeLayoutId: ID;
-  background?: BackgroundImage;
-}
+```python
+ID = str          # uuid4 hex string, from model/ids.py
 
-interface ProjectSettings {
-  displayUnit: 'mm' | 'cm' | 'm';
-  gridSize: number;                  // cm
-  snapEnabled: boolean;
-  defaultClearance: number;          // cm, default 60
-  apartmentLocked: boolean;
-}
+class Point:      x: float; y: float
+class Vertex(Point): id: ID
 
-interface Apartment {
-  rooms: Room[];
-  openings: Opening[];
-  obstacles: Obstacle[];
-}
+class ProjectDoc:
+    id: ID
+    name: str
+    created_at: datetime            # timezone-aware UTC
+    updated_at: datetime
+    settings: ProjectSettings
+    apartment: Apartment
+    layouts: list[Layout]           # at least one
+    active_layout_id: ID
+    background: BackgroundImage | None = None
 
-interface Room {
-  id: ID;
-  name: string;
-  vertices: Vertex[];                // world coords, normalised to clockwise on screen
-  color?: string;
-}
-interface Vertex extends Point { id: ID }
+class ProjectSettings:
+    display_unit: Literal["mm", "cm", "m"] = "cm"
+    grid_size: float = 10           # cm, > 0
+    snap_enabled: bool = True
+    default_clearance: float = 60   # cm, >= 0
+    apartment_locked: bool = False
 
-interface Opening {
-  id: ID;
-  kind: 'door' | 'window' | 'opening';
-  roomId: ID;
-  edgeStartVertexId: ID;             // edge runs from this vertex to the next
-  offset: number;                    // cm, edge start → opening centre
-  width: number;                     // cm
-  door?: { hinge: 'start' | 'end'; swing: 'in' | 'out' };
-}
+class Apartment:
+    rooms: list[Room] = []
+    openings: list[Opening] = []
+    obstacles: list[Obstacle] = []
 
-type Shape =
-  | { type: 'rect'; width: number; depth: number }          // centred on origin
-  | { type: 'ellipse'; rx: number; ry: number }             // centred on origin
-  | { type: 'polygon'; points: Point[] };                   // local coords
+class Room:
+    id: ID
+    name: str
+    vertices: list[Vertex]          # >= 3, world cm, normalised to clockwise on screen
+    color: str | None = None        # "#rrggbb"
 
-interface Placed {
-  id: ID;
-  name: string;
-  shape: Shape;
-  x: number; y: number;              // world position of the local origin
-  rotation: number;                  // degrees clockwise
-  color?: string;
-  notes?: string;
-}
+class DoorSpec:
+    hinge: Literal["start", "end"]
+    swing: Literal["in", "out"]
 
-interface Obstacle extends Placed {}
+class Opening:
+    id: ID
+    kind: Literal["door", "window", "opening"]
+    room_id: ID
+    edge_start_vertex_id: ID        # edge runs from this vertex to the next
+    offset: float                   # cm, edge start -> opening centre, >= 0
+    width: float                    # cm, > 0
+    door: DoorSpec | None = None    # required when kind == "door", else None
 
-interface FurnitureItem extends Placed {
-  category?: string;
-  roomId?: ID;
-  locked: boolean;
-  groupId?: ID;
-  clearance?: number;                // cm, overrides settings.defaultClearance
-  meta?: { product?: string; url?: string; price?: number };
-}
+# Shapes are centred on / relative to the item's local origin.
+class RectShape:    type: Literal["rect"];    width: float; depth: float   # > 0
+class EllipseShape: type: Literal["ellipse"]; rx: float; ry: float         # > 0
+class PolygonShape: type: Literal["polygon"]; points: list[Point]          # >= 3
+Shape = Annotated[RectShape | EllipseShape | PolygonShape, Field(discriminator="type")]
 
-interface Layout {
-  id: ID;
-  name: string;
-  furniture: FurnitureItem[];
-  groups: { id: ID; name: string }[];
-}
+class Placed:
+    id: ID
+    name: str
+    shape: Shape
+    x: float; y: float              # world position of the local origin
+    rotation: float = 0             # degrees clockwise, normalised to [0, 360)
+    color: str | None = None
+    notes: str | None = None
 
-interface BackgroundImage {
-  assetId: ID;
-  origin: Point;                     // world position of the image's top-left
-  cmPerPixel: number;
-  rotation: number;                  // degrees clockwise
-  opacity: number;                   // 0..1
-  visible: boolean;
-  locked: boolean;
-}
+class Obstacle(Placed): pass
+
+class FurnitureMeta:
+    product: str | None = None
+    url: str | None = None
+    price: float | None = None
+
+class FurnitureItem(Placed):
+    category: str | None = None
+    room_id: ID | None = None
+    locked: bool = False
+    group_id: ID | None = None
+    clearance: float | None = None  # cm, overrides settings.default_clearance
+    meta: FurnitureMeta | None = None
+
+class Group: id: ID; name: str
+
+class Layout:
+    id: ID
+    name: str
+    furniture: list[FurnitureItem] = []
+    groups: list[Group] = []
+
+class BackgroundImage:
+    asset_id: ID                    # file assets/<asset_id>.<ext> in the archive
+    mime_type: Literal["image/png", "image/jpeg", "image/webp"]
+    origin: Point                   # world position of the image's top-left
+    cm_per_pixel: float             # > 0
+    rotation: float = 0
+    opacity: float = 0.5            # 0..1
+    visible: bool = True
+    locked: bool = True
 ```
 
-**Not persisted:** viewport, selection, active tool, undo history, fit
-findings, save status.
+**Document-level validation:** IDs are unique within the project; there is at
+least one layout; `active_layout_id` exists; openings reference an existing
+room and one of its vertices; `door` is set exactly when `kind == "door"`;
+`group_id`s exist in their layout; `room_id`s exist.
 
-**Migrations:** `src/persistence/migrations/` holds one function per version
-step (`v1→v2`, …). Every past schema version keeps at least one fixture file in
-`tests/fixtures/`, and a test loads every fixture through the current import
-path. Breaking a fixture is a failing test.
+**Not persisted:** viewport, selection, active tool, undo history, findings,
+save status.
 
-## 12. Undo / redo
+**Migrations:** `persistence/migrations/` holds one function per version step
+(`v1_to_v2`, …) that works on raw dicts. Every past schema version keeps at
+least one fixture file in `tests/fixtures/`, and a test loads every fixture
+through the current loader. Breaking a fixture is a failing test.
 
-- History covers the `ProjectDoc` only, as immer patch pairs, for the session
-  (not persisted). Limit 200 steps.
-- One user action is one history entry: a drag records once on release, not
-  on every pointer move. A numeric field commits on blur or Enter.
+## 12. Editor state and undo / redo
+
+- Pure-Python `EditorState` (no Qt) holds the current `ProjectDoc`, the
+  selection and the history. The Qt layer observes it through a small signal
+  adapter.
+- Every committed action produces a new document. The previous document goes
+  onto the undo stack (copy-on-write snapshots; documents are small). Limit:
+  200 steps per session, not persisted.
+- One user action is one history entry: a drag commits once on release, not on
+  every mouse move. A numeric field commits on Enter or focus-out.
+- During a drag, canvas items move visually; on release the new values are
+  computed in world coordinates and committed, and the scene re-syncs from the
+  document.
 - Switching layouts is not an undoable action; edits inside a layout are.
 
 ## 13. Visual design
 
-A clean technical drawing: light neutral background, subtle grid (minor and
-major lines), dark room outlines, soft room fills, furniture in muted fills
-with darker outlines. Doors and windows each have a distinct conventional
-symbol. Selection is a thin accent outline with small square handles. Red is
-reserved for collisions and amber for warnings. Precision and legibility come
-before decoration. Light theme only for the MVP.
+A clean technical drawing using the Qt Fusion style with a forced light
+palette: light neutral background, subtle grid (minor and major lines), dark
+room outlines, soft room fills, furniture in muted fills with darker outlines.
+Doors and windows each have a distinct conventional symbol. Selection is a thin
+accent outline with small square handles. Red is reserved for collisions and
+amber for warnings. Precision and legibility come before decoration. Light
+theme only for the MVP.
 
 ## 14. Out of scope
 
-AI or LLM features; accounts, backend or sync; real-time collaboration; 3D;
-photorealistic models; floor-plan recognition; curved furniture geometry;
-retailer integrations; multiple storeys; wall thickness and construction-grade
-validation; vertical clearance.
+AI or LLM features; accounts, backend or sync service; real-time
+collaboration; web or mobile versions; 3D; photorealistic models; floor-plan
+recognition; curved furniture geometry; retailer integrations; multiple
+storeys; wall thickness and construction-grade validation; vertical clearance.
 
 **Parked for later:** Plan/Furnish modes, measuring tape tool, furniture preset
-library, dark theme.
+library, dark theme, auto-update.
 
 ## 15. Milestones
 
-1. **Foundation.** Scaffold, data model and zod schema, geometry module with
-   tests.
-2. **Persistence.** IndexedDB stores, project management, autosave state
-   machine, export/import with migrations and fixtures. Tests use
-   `fake-indexeddb`.
-3. **Canvas and rooms.** Viewport, grid and snapping, rectangle and polygon
-   rooms, vertex editing, numeric editing, validation, undo/redo, apartment
-   lock.
+1. **Foundation.** uv project, package layout, pydantic model with
+   document-level validation, geometry module with tests, layering test, and an
+   empty main window that launches.
+2. **Persistence.** Project file read/write, migrations and fixtures, atomic
+   autosave with retries and `.bak`, lock files, conflict detection, start
+   screen and project management.
+3. **Canvas and rooms.** View zoom/pan, grid and snapping, rectangle and
+   polygon rooms, vertex editing, numeric editing, validation, undo/redo,
+   apartment lock.
 4. **Furniture.** Shapes, transform handles, multi-select, groups, custom
    polygon drawing, layouts, keyboard shortcuts.
 5. **Openings and obstacles.** Doors (with swing), windows, openings,
    obstacles.
 6. **Fit checks.** Findings engine, highlighting, warnings panel, distance
    readouts, clearance zones.
-7. **Finish.** Background image with calibration, plan PNG/PDF export, PWA
-   offline, persistent storage, backup reminders, visual polish.
+7. **Finish.** Background image with calibration, plan PNG/PDF export,
+   PyInstaller builds, visual polish.
 
 Each milestone ends with a working app and passing tests.
 
@@ -465,11 +499,12 @@ Each milestone ends with a working app and passing tests.
 - Fit checks find overlaps, wall crossings, obstacle hits and blocked door
   swings, and furniture flush against a wall is not flagged.
 - Zoom, pan and rotation never change stored dimensions (tested).
-- Projects survive closing and reopening the browser. Create, rename,
-  duplicate, open and delete all work.
-- Export → import round-trips to a deep-equal `ProjectDoc` (apart from the new
-  project ID) with identical image bytes.
-- Failed saves and invalid imports surface clear messages and never destroy
-  the last good data.
-- After one online load, the app reloads and works offline.
-- The plan exports to PNG and prints to PDF.
+- Projects reopen exactly as saved: save → load deep-equals the document, with
+  identical image bytes.
+- Create, open, rename, duplicate and delete projects all work from the start
+  screen.
+- A failed save, a locked file, an external change or an invalid file each
+  produce a clear message and never destroy the last good file.
+- Plans export to PNG and PDF.
+- The app runs on Windows and macOS from source (`uv run`) and as a packaged
+  build.

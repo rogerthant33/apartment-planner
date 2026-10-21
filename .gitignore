@@ -1,9 +1,24 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Build
+build/
 dist/
-dev-dist/
-coverage/
-*.local
-.vite/
+
+# Project files created while running the app
+*.apartment.tmp
+*.apartment.lock
+*.apartment.bak
+
+# OS / editor
 .DS_Store
 Thumbs.db
 .claude/settings.local.json

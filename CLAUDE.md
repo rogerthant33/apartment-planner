@@ -1,74 +1,80 @@
 # Apartment Planner
 
-A private, browser-only 2D apartment planner for two people. The full scope,
-data model and milestones are in [docs/SPEC.md](docs/SPEC.md). Read the
-relevant section before starting a feature, and update the spec in the same
-change when behaviour or scope changes.
+A private 2D apartment planner desktop app for two people, written in Python
+with PySide6. The full scope, data model and milestones are in
+[docs/SPEC.md](docs/SPEC.md). Read the relevant section before starting a
+feature, and update the spec in the same change when behaviour or scope
+changes.
 
 ## Stack
 
-Vite + React + TypeScript (strict), react-konva, zustand + immer, idb, zod,
-vitest (+ fake-indexeddb). npm is the package manager. Development happens on
-Windows, so keep scripts cross-platform (no POSIX-only shell in
-`package.json`).
+Python 3.13, uv, PySide6 (`QGraphicsView`/`QGraphicsScene`), Shapely 2,
+pydantic v2, pytest + hypothesis + pytest-qt, ruff, mypy (strict). Development
+is on Windows, and the app must also work on macOS: use `pathlib`, no
+hard-coded separators, and no OS-specific shell in tooling.
 
 ## Commands
 
-> Fill these in at scaffold time (milestone 1) and keep them accurate.
+- `uv run apartment-planner`: launch the app
+- `uv run pytest`: run all tests (Qt tests run with the offscreen platform)
+- `uv run mypy`: type-check
+- `uv run ruff check` / `uv run ruff format`: lint / format
+- `uv add <pkg>` / `uv add --dev <pkg>`: add dependencies (never pip install)
 
-- `npm run dev`: start the dev server
-- `npm test`: run unit tests once (vitest run)
-- `npm run typecheck`: `tsc --noEmit`
-- `npm run lint`: eslint
-- `npm run build`: production build
-
-Before calling work done, run `npm run typecheck` and `npm test`.
+Before calling work done, run `uv run ruff check`, `uv run mypy` and
+`uv run pytest`.
 
 ## Architecture
 
 ```
-src/
-  model/        types, zod schema, defaults, id helpers   (pure)
-  geometry/     points, polygons, transforms, distances   (pure)
-  fit/          fit-check findings from apartment + layout (pure)
-  persistence/  idb access, autosave, export/import, migrations/
-  store/        zustand store, undo history (immer patches)
-  editor/       react-konva canvas, viewport, tools, handles
-  ui/           sidebars, panels, dialogs
-tests/fixtures/ exported files for each schema version
+src/apartment_planner/
+  model/        pydantic models, defaults, ids                (pure)
+  geometry/     Shapely-based helpers, transforms, validation (pure)
+  fit/          fit-check findings from apartment + layout     (pure)
+  state/        EditorState: document, selection, history      (pure)
+  persistence/  .apartment read/write, autosave, locks, migrations/  (no widgets)
+  canvas/       QGraphicsScene items, view, tools, handles     (Qt)
+  ui/           main window, panels, dialogs, start screen     (Qt)
+tests/          mirrors the package; tests/fixtures/ holds files per schema version
 ```
 
-**Layering:** `model`, `geometry` and `fit` must not import React, Konva,
-zustand or browser APIs. `persistence` must not import React or Konva. UI and
-editor code read from the store and call actions; they never mutate the
-document directly.
+**Layering** (enforced by `tests/test_layering.py`): `model`, `geometry`,
+`fit` and `state` must not import PySide6. `persistence` may use only
+`PySide6.QtCore` (for `QLockFile`), never widgets. `canvas` and `ui` read from
+`EditorState` and call its actions; they never mutate the document directly.
 
 ## Invariants (don't break these)
 
-- **The `ProjectDoc` is the source of truth.** Konva nodes are views. Never read
-  geometry back from Konva nodes; Konva node state isn't stored anywhere.
-- **World units are cm**, +y down, rotation in degrees clockwise. Convert
-  screen↔world only at the input boundary, via the viewport transform.
-  Geometry, snapping and fit checks take world coordinates only.
+- **The `ProjectDoc` is the source of truth.** Graphics items are views. Never
+  read geometry back from items; commit computed values to the document and
+  re-sync the scene.
+- **World units are cm**, +y down, rotation in degrees clockwise, and scene
+  units are world cm. Map view→scene only at the input boundary. Geometry,
+  snapping and fit checks take world coordinates only.
 - **No wall thickness.** Rooms are interior polygons; walls are their edges.
-- **Openings reference `edgeStartVertexId`, never an edge index.**
-- **One user gesture = one undo entry.** Commit on pointer-up or input
-  blur/Enter, not on every move.
-- **Collisions use `EPS` (0.1 cm).** Touching is not overlapping.
+- **Openings reference `edge_start_vertex_id`, never an edge index.**
+- **One user gesture = one undo entry.** Commit on mouse release or field
+  Enter/focus-out, not on every move.
+- **Overlap tolerance is `EPS` (0.1 cm)** via the shared helper. Touching is not
+  overlapping.
 - **Persisted shape changes need a schema migration.** Follow the
   `schema-change` skill.
-- **Never write base64 into IndexedDB.** Images are Blobs in the `assets` store.
+- **Saves are atomic:** tmp file → fsync → `os.replace`. Never write directly to
+  the project file, and never overwrite a file that changed on disk since it
+  was loaded.
 - **Never lose the last good save.** Save errors are surfaced and retried,
   never swallowed.
-- No network calls at runtime. Everything works offline after the first load.
+- No network access at runtime.
 
 ## Conventions
 
-- Prefer small pure functions with unit tests over logic inside components.
+- Prefer small pure functions with tests over logic in Qt classes.
 - Geometry and persistence code is written test-first, or at least with its
   tests in the same change.
-- IDs come from `crypto.randomUUID()` via `src/model/ids.ts`.
+- Full type hints everywhere; `mypy --strict` must pass. Use `from __future__
+  import annotations` only where needed for forward references.
+- IDs come from `model.ids.new_id()`.
 - Name things in domain terms (room, opening, layout, furniture, obstacle) as
-  the spec uses them.
+  the spec uses them; snake_case in code and JSON.
 - User-facing messages say what happened and how to fix it, plainly, without
   apologising.
