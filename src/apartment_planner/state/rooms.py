@@ -102,11 +102,24 @@ def delete_room(doc: ProjectDoc, room_id: str) -> ProjectDoc:
 
 def duplicate_room(doc: ProjectDoc, room_id: str, offset: XY) -> tuple[ProjectDoc, str]:
     """A copy of the room and its openings, moved by `offset`. Returns the copy's ID."""
-    copy, openings = copied_room(room(doc, room_id), doc.apartment.openings, offset)
+    doc, (copy_id,) = copy_rooms(doc, [room(doc, room_id)], doc.apartment.openings, offset)
+    return doc, copy_id
+
+
+def copy_rooms(
+    doc: ProjectDoc, rooms: Iterable[Room], openings: Iterable[Opening], offset: XY
+) -> tuple[ProjectDoc, tuple[str, ...]]:
+    """Copies of `rooms`, from this or another document, with their openings (those
+    of `openings` on them), moved by `offset`. Furniture is reassigned to the rooms
+    it now stands in. Returns the copies' IDs."""
+    openings = tuple(openings)
+    copies = [copied_room(source, openings, offset) for source in rooms]
     apartment = doc.apartment.evolve(
-        rooms=(*doc.apartment.rooms, copy), openings=(*doc.apartment.openings, *openings)
+        rooms=(*doc.apartment.rooms, *(copy for copy, _ in copies)),
+        openings=(*doc.apartment.openings, *(o for _, copied in copies for o in copied)),
     )
-    return doc.evolve(apartment=apartment), copy.id
+    doc = reassign_rooms(doc.evolve(apartment=apartment))
+    return doc, tuple(copy.id for copy, _ in copies)
 
 
 def copied_room(

@@ -10,7 +10,7 @@ from apartment_planner.canvas.view import PlanView
 from apartment_planner.geometry.shapes import l_shape
 from apartment_planner.geometry.snapping import snap_to_grid
 from apartment_planner.model import EllipseShape, FurnitureItem, ProjectDoc, RectShape, Shape
-from apartment_planner.state.clipboard import Clip, copy_selection, paste
+from apartment_planner.state.clipboard import Clip, copy_selection, paste, remove
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
@@ -56,8 +56,9 @@ class Commands:
     def __init__(self, view: PlanView) -> None:
         self.view = view
         self.clip: Clip | None = None  # what Ctrl+C or Ctrl+X took, for Ctrl+V
-        self._pastes = 0  # since the clip was taken: each lands a step further on
-        self._cut = False  # the first paste after a cut goes back in the same place
+        # How many offsets on the next paste lands: each paste a step further on, the
+        # first after a copy one step, and the first after a cut back in place.
+        self._paste_step = 1
 
     @property
     def state(self) -> EditorState | None:
@@ -79,27 +80,29 @@ class Commands:
             return frozenset()
         return frozenset(i.id for i in items)
 
-    def apply(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
-        """Commit `change(doc)`, or say why it was refused."""
-        self.create(lambda doc: (change(doc), None), select=None)
+    def apply(self, change: Callable[[ProjectDoc], ProjectDoc]) -> bool:
+        """Commit `change(doc)`, or say why it was refused. True if it was committed."""
+        return self.create(lambda doc: (change(doc), None), select=None)
 
     def create[T](
         self,
         change: Callable[[ProjectDoc], tuple[ProjectDoc, T]],
         select: Callable[[T], Iterable[str]] | None,
-    ) -> None:
-        """Commit a change that makes something, then select what `select` picks from it."""
+    ) -> bool:
+        """Commit a change that makes something, then select what `select` picks from it.
+        True if it was committed; False if it was refused (and the user told why)."""
         state = self.state
         if state is None or not self.view.editable:
-            return
+            return False
         try:
             doc, made = change(state.doc)
         except EditError as error:
             self.view.notify(str(error))
-            return
+            return False
         state.commit(doc)
         if select is not None:
             state.select(select(made))
+        return True
 
     def nudge(self, dx: float, dy: float) -> None:
         ids = self.selected_placed_ids()
@@ -128,31 +131,28 @@ class Commands:
                 lambda doc: duplicate_room(doc, room.id, DUPLICATE_OFFSET),
                 select=lambda copy_id: {copy_id},
             )
+        elif state.selection and not self.view.can_edit_rooms():
+            self.view.notify("The apartment is locked. Unlock it to duplicate rooms or obstacles.")
 
-    def copy(self) -> bool:
-        """Put copies of the selection on the clipboard. False if nothing copyable is
-        selected."""
+    def copy(self) -> Clip | None:
+        """Put copies of the selection on the clipboard, and return them."""
         state = self.state
         clip = copy_selection(state.doc, state.selection) if state is not None else None
-        if clip is None:
+        if state is None or clip is None:
             self.view.notify("Select furniture, obstacles or rooms to copy them.")
-            return False
-        self.clip, self._pastes, self._cut = clip, 0, False
-        return True
+            return None
+        self.clip, self._paste_step = clip, 1
+        return clip
 
     def cut(self) -> None:
-        if not self.copy():
+        clip, state = self.copy(), self.state
+        if clip is None or state is None:
             return
-        assert self.clip is not None
-        if self.clip.is_apartment and not self.view.can_edit_rooms():
+        if clip.is_apartment and not self.view.can_edit_rooms():
             self.view.notify("They were copied but not cut: unlock the apartment to cut them.")
             return
-        state = self.state
-        assert state is not None
-        before = state.doc
-        state.select(self.clip.ids)  # a whole room, not just a selected corner of it
-        self.view.delete_selection()
-        self._cut = state.doc is not before  # a refused delete (locked items) only copied
+        if self.apply(lambda doc: remove(doc, clip)):  # refused for locked items: only copied
+            self._paste_step = 0
 
     def paste(self) -> None:
         clip = self.clip
@@ -161,10 +161,10 @@ class Commands:
         if clip.is_apartment and not self.view.can_edit_rooms():
             self.view.notify("Unlock the apartment to paste rooms or obstacles.")
             return
-        steps = self._pastes + (0 if self._cut else 1)
-        offset = (DUPLICATE_OFFSET[0] * steps, DUPLICATE_OFFSET[1] * steps)
+        step = self._paste_step
+        offset = (DUPLICATE_OFFSET[0] * step, DUPLICATE_OFFSET[1] * step)
         self.create(lambda doc: paste(doc, clip, offset), select=lambda pasted: pasted)
-        self._pastes += 1
+        self._paste_step += 1
 
     def select_all(self) -> None:
         state = self.state

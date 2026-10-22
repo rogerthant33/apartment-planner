@@ -86,12 +86,14 @@ def test_clicking_a_group_member_selects_the_group(view: PlanView) -> None:
 def test_drag_moves_the_selection_once_and_snaps_flush_to_the_wall(view: PlanView) -> None:
     sofa, _ = ids(view)
 
-    drag(view, (200, 100), (180, 90), (107, 81))  # the sofa's left edge ends 7 cm from x=0
+    drag(view, (200, 100), (180, 90), (106, 81))  # the sofa's left edge ends 6 cm from x=0
 
     assert position(view, sofa) == (100, 81)
     view.state.undo()
     assert position(view, sofa) == (200, 100)
     assert not view.state.can_undo
+    drag(view, (200, 100), (107, 81))  # 7 cm: a gap left on purpose; the grid applies
+    assert position(view, sofa) == (110, 80)
 
 
 def test_alt_drag_moves_freely(view: PlanView) -> None:

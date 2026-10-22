@@ -126,8 +126,8 @@ after confirmation), Show in Folder, and changing the projects folder.
   first corner lands on the grid. Alt suspends snapping. A
   press that moves less than 4 px is a click and moves nothing. Furniture
   stays where it is (only its room assignment is updated). Corner handles show
-  only while a single room is selected. A read-only project still selects
-  rooms but doesn't move them.
+  only while a single room is selected. A read-only project selects rooms as a
+  locked apartment does (see Apartment lock) but doesn't move them.
 
 ### Validation
 
@@ -178,7 +178,8 @@ obstacles: Shift+clicking the other kind starts a new selection.
 ### Apartment lock
 
 When locked, rooms, openings and obstacles can't be moved, edited, deleted or
-drawn, so furniture arranging can't disturb them. Rooms can still be selected,
+drawn (Delete and Duplicate say to unlock), so furniture arranging can't
+disturb them. Rooms can still be selected,
 by a click inside one (Shift/Ctrl+click toggles it) or from the rooms list, to
 read their measurements; their properties show read-only. A drag that starts
 inside a room selects furniture with a rubber band, as it does unlocked outside
@@ -226,10 +227,12 @@ product details. Hovering over Clearance explains it.
   a group with fewer than two members dissolves), lock (a locked item can't be
   moved, resized, rotated or deleted, but can be renamed and unlocked).
 - Snap to room edges (flush against a wall) and to other items' edges when a
-  corner comes within 10 px of one; otherwise the item's origin snaps to the
+  corner comes within 6 px of one; otherwise the item's origin snaps to the
   grid. Once flush, the item also slides along that edge to meet a second,
-  non-parallel edge within 10 px, so a corner pushed into a room's corner sits
-  flush against both walls. Alt suspends snapping.
+  non-parallel edge within 6 px, so a corner pushed into a room's corner sits
+  flush against both walls. The reach is small (and on screen, so it shrinks in
+  cm as you zoom in) so that snapping only happens when the item is clearly
+  meant to touch: a visible gap can be left on purpose. Alt suspends snapping.
 - Copy, cut and paste (Ctrl+C / Ctrl+X / Ctrl+V) work on one kind of thing at
   a time, as selections do: furniture (with the groups they form), obstacles,
   or rooms (with their doors and windows). Openings alone aren't copied. Pasted

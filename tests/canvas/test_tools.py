@@ -279,9 +279,10 @@ def test_a_read_only_project_selects_rooms_but_does_not_move_them(view: PlanView
     (only,) = with_rooms(view, SQUARE)
     view.set_state(view.state, editable=False)
 
-    drag(view.tools["select"], (200, 150), (300, 250))
-
+    drag(view.tools["select"], (200, 150))
     assert view.state.selection == {only.id}
+    drag(view.tools["select"], (200, 150), (300, 250))  # a band, as in a locked apartment
+
     assert corners(room(view.state.doc, only.id)) == SQUARE
 
 

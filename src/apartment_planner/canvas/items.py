@@ -336,14 +336,13 @@ class PreviewItem(QGraphicsPathItem):
         closed: bool,
         valid: bool,
         labels: Sequence[tuple[XY, str]] = (),
-        start: tuple[XY, bool] | None = None,
+        mark_start: bool = False,
     ) -> None:
-        """`start`: a drawing's first corner, to click to close it, and whether the
-        pointer is on it (then it's filled in)."""
+        """`mark_start`: mark a drawing's first corner, to click to close it; it's
+        filled in once the outline shows closed."""
         self.show_outlines([points], closed=closed, valid=valid, labels=labels)
-        if start is not None:
-            point, active = start
-            self.start_marker = HandleItem(point, active, self)
+        if mark_start and points:
+            self.start_marker = HandleItem(points[0], closed, self)
 
     def show_outlines(
         self,
@@ -380,9 +379,7 @@ class PreviewItem(QGraphicsPathItem):
 
     def _remove_start_marker(self) -> None:
         if self.start_marker is not None:
-            scene = self.start_marker.scene()
-            if scene is not None:
-                scene.removeItem(self.start_marker)
+            _detach(self.start_marker)
             self.start_marker = None
 
     @property
@@ -391,11 +388,15 @@ class PreviewItem(QGraphicsPathItem):
 
     def _set_labels(self, labels: Sequence[tuple[XY, str]]) -> None:
         for label in self._labels:
-            scene = label.scene()
-            if scene is not None:
-                scene.removeItem(label)
+            _detach(label)
         self._labels = []
         for position, text in labels:
             label = TextLabel(text, self)
             label.setPos(*position)
             self._labels.append(label)
+
+
+def _detach(item: QGraphicsItem) -> None:
+    scene = item.scene()
+    if scene is not None:
+        scene.removeItem(item)

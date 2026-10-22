@@ -131,9 +131,14 @@ def test_locked_rooms_are_chosen_from_the_list_read_only_and_stay_selected(
     assert page.name.isEnabled()
     window.lock_action.trigger()  # lock again
     window.delete_action.trigger()
+    assert window.statusBar().currentMessage() == (
+        "The apartment is locked. Unlock it to delete rooms, doors or obstacles."
+    )
+    window.duplicate_action.trigger()
 
+    assert editor(window).doc.apartment.rooms == (room,)
     assert editor(window).selection == {room.id}
     assert not page.name.isEnabled()
     assert window.statusBar().currentMessage() == (
-        "The apartment is locked. Unlock it to delete rooms, doors or obstacles."
+        "The apartment is locked. Unlock it to duplicate rooms or obstacles."
     )

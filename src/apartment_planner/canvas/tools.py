@@ -259,27 +259,34 @@ class SelectTool(Tool):
             self._press_placed(hit, pointer)
             return
         room_id = room_at(doc.apartment.rooms, pos)
-        if room_id is not None and not doc.settings.apartment_locked:
+        if room_id is not None and self.can_edit_rooms():
             self._press_room(room_id, pointer)
             return
         if not pointer.adds:
             state.select(())
-        # While the apartment is locked, a click in a room selects it on release (to
-        # see its measurements), and a drag selects furniture with a band as elsewhere.
+        # While rooms can't be changed, a click in one selects it on release (to see
+        # its measurements), and a drag selects furniture with a band as elsewhere.
         self._drag = _Drag("band", pos, room_id=room_id or "")
 
     def _press_room(self, room_id: str, pointer: Pointer) -> None:
-        """Select a room (Shift or Ctrl adds rooms) and start moving the selected rooms."""
+        """Select a room and, unless Shift or Ctrl toggled it, start moving the
+        selected rooms."""
+        rooms = self._select_room(room_id, adds=pointer.adds)
+        if not pointer.adds:
+            self._drag = _Drag("rooms", pointer.pos, ids=rooms)
+
+    def _select_room(self, room_id: str, *, adds: bool) -> frozenset[str]:
+        """Toggle the room in the selected rooms (adds), or else select it, keeping the
+        other selected rooms if it's one of them (to move them together). Returns the
+        selected rooms."""
         state = self.host.state
         rooms = frozenset(r.id for r in selected_rooms(self.doc, state.selection))
-        if pointer.adds:
-            state.select(rooms - {room_id} if room_id in rooms else rooms | {room_id})
-            return
-        if room_id not in rooms:
+        if adds:
+            rooms = rooms - {room_id} if room_id in rooms else rooms | {room_id}
+        elif room_id not in rooms:
             rooms = frozenset({room_id})
-            state.select(rooms)
-        if self.can_edit_rooms():  # a read-only project only selects
-            self._drag = _Drag("rooms", pointer.pos, ids=rooms)
+        state.select(rooms)
+        return rooms
 
     def _reshapeable(self, item: Placed) -> bool:
         if isinstance(item, FurnitureItem):
@@ -314,9 +321,8 @@ class SelectTool(Tool):
             return
         preview = self.host.plan.preview
         if drag.kind == "band":
-            delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
-            if drag.end is None and math.hypot(*delta) < style.DRAG_PX * pointer.cm_per_px:
-                return  # still a click, which in a locked room selects the room
+            if drag.end is None and _still_a_click(drag, pointer):
+                return  # which in a locked room selects the room
             drag.end = pointer.pos
             preview.show_outline(rect_outline(drag.start, pointer.pos), closed=True, valid=True)
         elif drag.kind == "room_vertex":
@@ -353,9 +359,9 @@ class SelectTool(Tool):
         self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
 
     def _rooms_preview(self, drag: _Drag, pointer: Pointer) -> None:
+        if drag.result is None and _still_a_click(drag, pointer):
+            return  # a little jitter mustn't move a room
         delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
-        if drag.result is None and math.hypot(*delta) < style.DRAG_PX * pointer.cm_per_px:
-            return  # still a click: a little jitter mustn't move a room
         rooms = selected_rooms(self.doc, drag.ids)
         corners = [(v.x, v.y) for r in rooms for v in r.vertices]
         if pointer.snapping:
@@ -389,7 +395,7 @@ class SelectTool(Tool):
                 delta,
                 [*rooms, *placed_edges(others)],
                 grid=self.doc.settings.grid_size,
-                tolerance=style.SNAP_PX * pointer.cm_per_px,
+                tolerance=style.MOVE_SNAP_PX * pointer.cm_per_px,
             )
         dx, dy = delta
         outlines = [[(x + dx, y + dy) for x, y in footprint(item)] for item in items]
@@ -441,7 +447,7 @@ class SelectTool(Tool):
                 kept = selected_furniture(self.doc, state.selection) if pointer.adds else []
                 state.select({f.id for f in kept} | with_groups(self.doc, touched))
             elif drag.room_id:
-                self._press_room(drag.room_id, pointer)  # selects only: no moving while locked
+                self._select_room(drag.room_id, adds=pointer.adds)
             return
         if drag.result is None:  # a click, not a drag
             return
@@ -693,7 +699,7 @@ class PolygonTool(Tool):
     def move(self, pointer: Pointer) -> None:
         if self.points:
             closing = self._closes(pointer)
-            self._show(self.points[0] if closing else self.snapped(pointer), closing=closing)
+            self._show(self.snapped(pointer), closing=closing)
 
     def _closes(self, pointer: Pointer) -> bool:
         """True if a click here would close the outline: it's on the first corner."""
@@ -753,5 +759,11 @@ class PolygonTool(Tool):
             valid = outline_problem(drawn_outline(points)) is None
         labels = segment_labels(points, self.doc.settings.display_unit, closed=closing)
         self.host.plan.preview.show_outline(
-            points, closed=closing, valid=valid, labels=labels, start=(points[0], closing)
+            points, closed=closing, valid=valid, labels=labels, mark_start=True
         )
+
+
+def _still_a_click(drag: _Drag, pointer: Pointer) -> bool:
+    """The pointer hasn't moved far enough from the press for it to be a drag."""
+    moved = math.dist(pointer.pos, drag.start)
+    return moved < style.DRAG_PX * pointer.cm_per_px

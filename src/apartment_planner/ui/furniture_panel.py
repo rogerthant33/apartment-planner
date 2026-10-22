@@ -174,17 +174,17 @@ class FurniturePage(QWidget):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         self.turn_buttons: dict[str, QToolButton] = {}
-        for name, step, key in (
-            ("anticlockwise 90", -90.0, " (Shift+R)"),
-            ("anticlockwise", -ROTATE_STEP, ""),
-            ("clockwise", ROTATE_STEP, ""),
-            ("clockwise 90", 90.0, " (R)"),
+        for name, direction, step, shortcut in (
+            ("anticlockwise 90", "anticlockwise", -90.0, " (Shift+R)"),
+            ("anticlockwise", "anticlockwise", -ROTATE_STEP, ""),
+            ("clockwise", "clockwise", ROTATE_STEP, ""),
+            ("clockwise 90", "clockwise", 90.0, " (R)"),
         ):
             arrow = "↺" if step < 0 else "↻"
             button = QToolButton()
             button.setText(f"{arrow} {abs(step):g}°")
-            button.setToolTip(f"Turn {abs(step):g}° {name.split()[0]}{key}")
-            button.setAutoRepeat(not key)  # small steps: hold it down to keep turning
+            button.setToolTip(f"Turn {abs(step):g}° {direction}{shortcut}")
+            button.setAutoRepeat(abs(step) == ROTATE_STEP)  # hold it down to keep turning
             button.clicked.connect(lambda _=False, step=step: self._turn(step))
             layout.addWidget(button)
             self.turn_buttons[name] = button

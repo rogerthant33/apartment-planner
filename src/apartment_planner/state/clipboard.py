@@ -18,8 +18,8 @@ from apartment_planner.model import (
     Room,
 )
 from apartment_planner.state import furniture
-from apartment_planner.state.placed import copy_obstacles, selected_obstacles
-from apartment_planner.state.rooms import copied_room, selected_rooms
+from apartment_planner.state.placed import copy_obstacles, delete_placed, selected_obstacles
+from apartment_planner.state.rooms import copy_rooms, delete_room, selected_rooms
 
 
 @dataclass(frozen=True)
@@ -73,10 +73,12 @@ def paste(doc: ProjectDoc, clip: Clip, offset: XY) -> tuple[ProjectDoc, frozense
         return furniture.copy_furniture(doc, clip.furniture, clip.groups, offset)
     if clip.obstacles:
         return copy_obstacles(doc, clip.obstacles, offset)
-    copies = [copied_room(source, clip.openings, offset) for source in clip.rooms]
-    apartment = doc.apartment.evolve(
-        rooms=(*doc.apartment.rooms, *(room for room, _ in copies)),
-        openings=(*doc.apartment.openings, *(o for _, openings in copies for o in openings)),
-    )
-    doc = furniture.reassign_rooms(doc.evolve(apartment=apartment))
-    return doc, frozenset(room.id for room, _ in copies)
+    doc, room_ids = copy_rooms(doc, clip.rooms, clip.openings, offset)
+    return doc, frozenset(room_ids)
+
+
+def remove(doc: ProjectDoc, clip: Clip) -> ProjectDoc:
+    """The document without the clip's originals: what a cut leaves behind."""
+    for source in clip.rooms:
+        doc = delete_room(doc, source.id)
+    return delete_placed(doc, clip.ids) if not clip.rooms else doc

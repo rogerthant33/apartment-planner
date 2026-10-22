@@ -39,9 +39,8 @@ from apartment_planner.state.furniture import (
     rename_layout,
     selected_furniture,
 )
-from apartment_planner.state.openings import selected_openings
-from apartment_planner.state.placed import selectable, selected_obstacles
-from apartment_planner.state.rooms import selected_room, selected_rooms
+from apartment_planner.state.placed import selectable
+from apartment_planner.state.rooms import selected_rooms
 from apartment_planner.state.units import parse_length
 from apartment_planner.ui import dialogs, icons
 from apartment_planner.ui.commands import Commands
@@ -540,10 +539,6 @@ class MainWindow(QMainWindow):
         state = self.editor
         editable = state is not None and self.view.editable
         rooms = state is not None and self.view.can_edit_rooms()
-        has_room = state is not None and selected_room(state.doc, state.selection) is not None
-        furniture = selected_furniture(state.doc, state.selection) if state else []
-        obstacles = state is not None and bool(selected_obstacles(state.doc, state.selection))
-        openings = state is not None and bool(selected_openings(state.doc, state.selection))
         locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
@@ -558,12 +553,9 @@ class MainWindow(QMainWindow):
         for action in self.image_tool_actions:
             action.setEnabled(editable and has_image)
         self.import_background_action.setEnabled(editable)
-        apartment = rooms and (has_room or obstacles)
-        self.duplicate_action.setEnabled(editable and (bool(furniture) or apartment))
-        # Rooms and obstacles stay deletable while locked, so Delete says to unlock.
-        any_rooms = state is not None and bool(selected_rooms(state.doc, state.selection))
-        deletable = bool(furniture) or obstacles or openings or any_rooms
-        self.delete_action.setEnabled(editable and deletable)
+        # Like cut and paste, these decide what they can do, and say so if nothing.
+        self.duplicate_action.setEnabled(editable)
+        self.delete_action.setEnabled(editable)
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)

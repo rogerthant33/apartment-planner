@@ -177,7 +177,7 @@ def _closest[T](
 
 
 def _on_edges(point: XY, edges: Iterable[tuple[XY, XY]]) -> Iterable[tuple[XY, tuple[XY, XY]]]:
-    return ((nearest_on_segment(point, a, b), (a, b)) for a, b in edges)
+    return ((nearest_on_segment(point, *edge), edge) for edge in edges)
 
 
 def _slide_onto(
@@ -187,16 +187,16 @@ def _slide_onto(
     corners so one lands on an edge that crosses that direction; 0 if none is in
     reach. The shortest slide wins; the first found wins a tie."""
     ux, uy = along
+    moved = [(x + delta[0], y + delta[1]) for x, y in corners]
     best: float | None = None
-    for x, y in corners:
-        px, py = x + delta[0], y + delta[1]
-        for (ax, ay), (bx, by) in edges:
-            ex, ey = bx - ax, by - ay
-            denominator = ux * ey - uy * ex  # the edge's length times the sine between them
-            if abs(denominator) * tolerance <= EPS * math.hypot(ex, ey):
-                # (Nearly) parallel to the slide, such as the edge it's flush against:
-                # within reach it strays less than EPS from it, so it's no corner.
-                continue
+    for (ax, ay), (bx, by) in edges:
+        ex, ey = bx - ax, by - ay
+        denominator = ux * ey - uy * ex  # the edge's length times the sine between them
+        if abs(denominator) * tolerance <= EPS * math.hypot(ex, ey):
+            # (Nearly) parallel to the slide, such as the edge it's flush against:
+            # within reach it strays less than EPS from it, so it's no corner.
+            continue
+        for px, py in moved:
             ox, oy = ax - px, ay - py
             t = (ox * ey - oy * ex) / denominator
             s = (ox * uy - oy * ux) / denominator

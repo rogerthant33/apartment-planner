@@ -78,6 +78,10 @@ OUTLINE_PX = 2.0
 HANDLE_PX = 9
 ROTATE_PX = 28  # how far beyond an item's top edge its rotate handle sits
 SNAP_PX = 10  # how close on screen a vertex or edge must be to attract the cursor
+# How close a moved item's corner must come to a wall or another item to snap flush
+# (and on into a corner): close enough that the user clearly means to touch it, so a
+# visible gap can still be left on purpose.
+MOVE_SNAP_PX = 6
 DRAG_PX = 4  # how far the pointer must move before a press on a room becomes a drag
 WALL_PX = 25  # how close to a wall a door or window lands on it
 CLOSE_PX = 10  # how close to the first point a click closes a polygon
