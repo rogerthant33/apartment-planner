@@ -34,6 +34,9 @@ def placed(rotation: float = 0.0) -> ProjectDoc:
         (b"\xff\xd8\xff\xe0...", "image/jpeg"),
         (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp"),
         (b"RIFF\x00\x00\x00\x00WAVEfmt ", None),
+        (b"RIFF\x00\x00\x00\x00XWMAfmt ", None),
+        (b"FORM\x00\x00\x00\x00WEBPVP8 ", None),
+        (b"RIFX\x00\x00\x00\x00WEBPVP8 ", None),
         (b"GIF89a", None),
     ],
 )
@@ -44,21 +47,26 @@ def test_image_type_from_the_first_bytes(data: bytes, expected: str | None) -> N
 def test_a_new_image_is_centred_unlocked_and_replaces_the_old_one() -> None:
     doc = placed()
     first = doc.background
-    doc, asset_id = set_background(doc, "image/jpeg", (10, 10), (0, 0))
+    doc, asset_id = set_background(doc, "image/jpeg", (11, 7), (0, 0))
 
     bg = doc.background
     assert bg is not None and first is not None
-    assert (bg.asset_id, bg.mime_type) == (asset_id, "image/jpeg")
+    assert (bg.asset_id, bg.mime_type, bg.origin.x, bg.origin.y) == (
+        asset_id,
+        "image/jpeg",
+        -5.5,
+        -3.5,
+    )
     assert (first.origin.x, first.origin.y, first.locked) == (-100, -50, False)
     assert image_to_world(first, (200, 100)) == (100, 50)
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 37])
 def test_world_and_image_coordinates_round_trip(rotation: float) -> None:
-    bg = placed(rotation).background
+    bg = update_background(placed(rotation), cm_per_pixel=2.5).background
     assert bg is not None
 
-    assert close(world_to_image(bg, image_to_world(bg, (123, 45))), (123, 45))
+    assert close(world_to_image(bg, image_to_world(bg, (123.25, 45.5))), (123.25, 45.5))
 
 
 def test_image_turns_clockwise_about_its_corner() -> None:
@@ -73,15 +81,15 @@ def test_calibration_scales_about_the_first_point(rotation: float) -> None:
     doc = placed(rotation)
     before = doc.background
     assert before is not None
-    a, b = image_to_world(before, (50, 50)), image_to_world(before, (250, 50))  # 200 cm apart
+    a, b = image_to_world(before, (50, 30)), image_to_world(before, (250, 30))  # 200 cm apart
 
     doc = calibrate(doc, a, b, 350)
 
     bg = doc.background
     assert bg is not None
     assert bg.cm_per_pixel == pytest.approx(1.75)
-    assert close(image_to_world(bg, (50, 50)), a)
-    assert math.dist(image_to_world(bg, (50, 50)), image_to_world(bg, (250, 50))) == (
+    assert close(image_to_world(bg, (50, 30)), a)
+    assert math.dist(image_to_world(bg, (50, 30)), image_to_world(bg, (250, 30))) == (
         pytest.approx(350)
     )
 
@@ -91,12 +99,13 @@ def test_calibration_scales_about_the_first_point(rotation: float) -> None:
     [
         ((0.9, 0), 100, "Click two points further apart"),
         ((1, 0), 0, "Enter the real distance"),
+        ((1, 0), -0.5, "Enter the real distance"),
     ],
 )
 def test_calibration_refuses_unusable_input(
     b: tuple[float, float], distance: float, message: str
 ) -> None:
-    calibrate(placed(), (0, 0), (1, 0), 100)  # exactly 1 cm apart is enough
+    calibrate(placed(), (0, 0), (1, 0), 0.5)  # exactly 1 cm apart is enough, for any distance
 
     with pytest.raises(EditError, match=message):
         calibrate(placed(), (0, 0), b, distance)

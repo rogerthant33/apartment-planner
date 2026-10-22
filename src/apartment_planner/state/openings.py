@@ -41,9 +41,12 @@ def add_opening(
         kind=kind,
         room_id=room_id,
         edge_start_vertex_id=edge_start_vertex_id,
-        offset=max(offset, 0.0),
+        # pragma below: the clamp pulls any offset under half the width (at least 40
+        # cm, or the opening fills the wall) onto the wall, so a floor of 1 is the same.
+        offset=max(offset, 0.0),  # pragma: no mutate
         width=min(DEFAULT_WIDTH[kind], math.dist(a, b)),
-        door=DEFAULT_DOOR if kind == "door" else None,
+        # pragma below: "door" sorts before the other kinds, so `<=` is the same.
+        door=DEFAULT_DOOR if kind == "door" else None,  # pragma: no mutate
     )
     new = clamp_opening(new, room(doc, room_id))
     return _with_openings(doc, (*doc.apartment.openings, new)), new.id
@@ -65,11 +68,12 @@ def move_opening(
 def update_opening(doc: ProjectDoc, opening_id: str, **changes: Any) -> ProjectDoc:
     """Change an opening. Changing the kind adds or drops the door settings."""
     current = opening(doc, opening_id)
-    kind = changes.get("kind", current.kind)
-    if kind == "door" and current.door is None and "door" not in changes:
-        changes["door"] = DEFAULT_DOOR
-    elif kind != "door":
+    # "door" sorts before the other kinds, so `<=` is the same.
+    is_door = changes.get("kind", current.kind) == "door"  # pragma: no mutate
+    if not is_door:
         changes["door"] = None
+    elif current.door is None and "door" not in changes:
+        changes["door"] = DEFAULT_DOOR
     updated = current.evolve(**changes)
     updated = clamp_opening(updated, room(doc, updated.room_id))
     return _with_openings(
@@ -90,11 +94,11 @@ def parse_opening_length(
     """
     length = parse_length(text.strip(), unit)
     wall = wall_length(doc, target)
-    if key == "offset":
+    if key == "offset":  # pragma: no mutate ("width" sorts after "offset": `<=` is the same)
         if length is None:
             raise EditError("Offset: enter the distance from the wall's start, such as 60.")
         return {"offset": length}
-    if length is None or length <= 0 or length > wall:
+    if not length or length > wall:  # None or 0: parsed lengths are never negative
         raise EditError(
             f"Width: enter a length greater than 0 and at most the wall's "
             f"{format_length(wall, unit)}."

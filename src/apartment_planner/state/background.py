@@ -44,11 +44,12 @@ def set_background(
     """A new background image of `size` pixels, centred on `centre`, replacing any
     other. Returns the document and the new image's asset ID."""
     asset_id = new_id()
-    half_w, half_h = size[0] * DEFAULT_CM_PER_PIXEL / 2, size[1] * DEFAULT_CM_PER_PIXEL / 2
+    # pragma below: the default scale is 1, so dividing by it or raising to it is the same.
+    width, height = (n * DEFAULT_CM_PER_PIXEL for n in size)  # pragma: no mutate
     background = BackgroundImage(
         asset_id=asset_id,
         mime_type=mime_type,
-        origin=Point(x=centre[0] - half_w, y=centre[1] - half_h),
+        origin=Point(x=centre[0] - width / 2, y=centre[1] - height / 2),
         cm_per_pixel=DEFAULT_CM_PER_PIXEL,
         locked=False,  # it still has to be calibrated and moved into place
     )

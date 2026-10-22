@@ -73,7 +73,7 @@ def rotate_placed(doc: ProjectDoc, ids: Iterable[str], degrees: float) -> Projec
     obstacles = selected_obstacles(doc, ids)
     if not obstacles:
         return furniture.rotate_furniture(doc, ids, degrees)
-    if len(obstacles) == 1:
+    if len(obstacles) == 1:  # pragma: no mutate (never empty here, so `<= 1` is the same)
         (only,) = obstacles
         return _replace(doc, {only.id: only.evolve(rotation=only.rotation + degrees)})
     cx, cy = footprint_centre(obstacles)
@@ -115,7 +115,12 @@ def _with_obstacles(doc: ProjectDoc, obstacles: tuple[Obstacle, ...]) -> Project
     return doc.evolve(apartment=doc.apartment.evolve(obstacles=obstacles))
 
 
-def selectable(doc: ProjectDoc, ids: Iterable[str], *, apartment_editable: bool) -> frozenset[str]:
+def selectable(
+    doc: ProjectDoc,
+    ids: Iterable[str],
+    *,  # pragma: no mutate (`/` still accepts every call that names apartment_editable)
+    apartment_editable: bool,
+) -> frozenset[str]:
     """What clicking on something that involves `ids` (such as a fit finding) selects.
 
     Furniture if there is any, otherwise obstacles or rooms while the apartment

@@ -43,4 +43,4 @@ def test_parse_length_rejects_anything_else(text: str) -> None:
 
 
 def test_format_area_in_square_metres() -> None:
-    assert format_area(1_000_000) == "100.00 m²"
+    assert format_area(1_234_567) == "123.46 m²"

@@ -14,7 +14,7 @@ from apartment_planner.state.placed import (
     update_placed,
 )
 from apartment_planner.state.rooms import add_room
-from tests.factories import NOW
+from tests.factories import NOW, polygon_shape
 
 COLUMN = RectShape(width=30, depth=30)
 
@@ -31,8 +31,15 @@ def project() -> tuple[ProjectDoc, str, str, str]:
 
 def test_obstacles_get_unique_names_and_live_in_the_apartment() -> None:
     doc, _, _, _ = project()
+    for _ in range(2):
+        doc, _ = add_obstacle(doc, COLUMN, (500, 100), "Column")
 
-    assert [o.name for o in doc.apartment.obstacles] == ["Column", "Column 2"]
+    assert [o.name for o in doc.apartment.obstacles] == [
+        "Column",
+        "Column 2",
+        "Column 3",
+        "Column 4",
+    ]
     assert len(doc.active_layout.furniture) == 1
 
 
@@ -48,12 +55,24 @@ def test_obstacles_move_rotate_and_update() -> None:
 
     doc = move_placed(doc, [first], (10, -5))
     doc = rotate_placed(doc, [first, second], 90)  # about their common centre (205, 97.5)
-    doc = update_placed(doc, second, name="Pillar")
+    doc = update_placed(doc, "".join(second), name="Pillar")  # an equal ID, not the same string
 
-    a, b = placed_item(doc, first), placed_item(doc, second)
+    a, b = placed_item(doc, "".join(first)), placed_item(doc, second)
     assert (a.x, a.y, a.rotation) == pytest.approx((207.5, 2.5, 90))
     assert (b.x, b.y) == pytest.approx((202.5, 192.5))
     assert b.name == "Pillar"
+
+
+def test_a_single_obstacle_turns_about_its_origin() -> None:
+    doc, _, _, _ = project()
+    # A triangle whose origin is its corner, not the centre of its bounding box.
+    doc, wedge = add_obstacle(doc, polygon_shape((0, 0), (60, 0), (0, 30)), (500, 100), "Wedge")
+    doc = update_placed(doc, wedge, rotation=30)
+
+    doc = rotate_placed(doc, [wedge], 90)
+
+    item = placed_item(doc, wedge)
+    assert (item.x, item.y, item.rotation) == (500, 100, 120)
 
 
 def test_furniture_goes_through_the_furniture_edits() -> None:
@@ -69,12 +88,12 @@ def test_duplicate_and_delete_obstacles() -> None:
     doc, _, first, second = project()
     doc = update_placed(doc, first, rotation=30, color="#808080")
 
-    doc, copies = duplicate_placed(doc, [first], (0, 50))
+    doc, copies = duplicate_placed(doc, [first], (20, 50))
     (copy_id,) = copies
     copy = placed_item(doc, copy_id)
     assert (copy.name, copy.x, copy.y, copy.rotation, copy.color) == (
         "Column 3",
-        100,
+        120,
         150,
         30,
         "#808080",

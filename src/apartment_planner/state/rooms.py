@@ -225,7 +225,8 @@ def delete_vertex(doc: ProjectDoc, room_id: str, vertex_id: str) -> ProjectDoc:
     """Remove a corner, merging its two edges. Openings on the removed edge move to the
     merged edge, as close to where they were as possible."""
     target = room(doc, room_id)
-    if len(target.vertices) <= MIN_VERTICES:
+    # pragma below: rooms have at least MIN_VERTICES corners, so `==` and `is` are the same.
+    if len(target.vertices) <= MIN_VERTICES:  # pragma: no mutate
         raise EditError(f"A room needs at least {MIN_VERTICES} corners.")
     i = _index(target, vertex_id)
     previous, removed, following = target.vertices[i - 1], target.vertices[i], _next(target, i)
@@ -274,12 +275,12 @@ def clamp_opening(opening: Opening, target: Room) -> Opening:
     length = _length(target.vertices[i], _next(target, i))
     half = opening.width / 2
     offset = (
-        # pragma: at width == length both branches give length / 2.
         length / 2
-        if opening.width >= length
-        else min(max(opening.offset, half), length - half)  # pragma: no mutate
+        # pragma below: at width == length both branches give length / 2, so `>` is the same.
+        if opening.width >= length  # pragma: no mutate
+        else min(max(opening.offset, half), length - half)
     )
-    return opening if offset == opening.offset else opening.evolve(offset=offset)
+    return opening.evolve(offset=offset)
 
 
 def _check(points: Sequence[Point]) -> None:
