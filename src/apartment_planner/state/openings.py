@@ -17,6 +17,7 @@ OpeningKind = Literal["door", "window", "opening"]
 
 DEFAULT_WIDTH: dict[str, float] = {"door": 80.0, "window": 120.0, "opening": 90.0}
 DEFAULT_DOOR = DoorSpec(hinge="start", swing="in")
+NEW_DOOR_SPEC: dict[str, DoorSpec] = {"door": DEFAULT_DOOR}  # other kinds have none
 
 
 def opening(doc: ProjectDoc, opening_id: str) -> Opening:
@@ -45,8 +46,7 @@ def add_opening(
         # cm, or the opening fills the wall) onto the wall, so a floor of 1 is the same.
         offset=max(offset, 0.0),  # pragma: no mutate
         width=min(DEFAULT_WIDTH[kind], math.dist(a, b)),
-        # pragma below: "door" sorts before the other kinds, so `<=` is the same.
-        door=DEFAULT_DOOR if kind == "door" else None,  # pragma: no mutate
+        door=NEW_DOOR_SPEC.get(kind),
     )
     new = clamp_opening(new, room(doc, room_id))
     return _with_openings(doc, (*doc.apartment.openings, new)), new.id
@@ -85,25 +85,24 @@ def wall_length(doc: ProjectDoc, target: Opening) -> float:
     return math.dist(*edge(room(doc, target.room_id), target.edge_start_vertex_id))
 
 
-def parse_opening_length(
-    doc: ProjectDoc, target: Opening, key: Literal["width", "offset"], text: str, unit: Unit
-) -> dict[str, float]:
-    """The change typing `text` into the opening's width or offset field means.
-
-    An opening can't be wider than its wall; offsets are clamped onto the wall.
-    """
+def parse_opening_width(doc: ProjectDoc, target: Opening, text: str, unit: Unit) -> float:
+    """The width typed into the opening's width field. It can't be wider than its wall."""
     length = parse_length(text.strip(), unit)
     wall = wall_length(doc, target)
-    if key == "offset":  # pragma: no mutate ("width" sorts after "offset": `<=` is the same)
-        if length is None:
-            raise EditError("Offset: enter the distance from the wall's start, such as 60.")
-        return {"offset": length}
     if not length or length > wall:  # None or 0: parsed lengths are never negative
         raise EditError(
             f"Width: enter a length greater than 0 and at most the wall's "
             f"{format_length(wall, unit)}."
         )
-    return {"width": length}
+    return length
+
+
+def parse_opening_offset(text: str, unit: Unit) -> float:
+    """The offset typed into the opening's offset field; edits clamp it onto the wall."""
+    length = parse_length(text.strip(), unit)
+    if length is None:
+        raise EditError("Offset: enter the distance from the wall's start, such as 60.")
+    return length
 
 
 def delete_openings(doc: ProjectDoc, ids: Iterable[str]) -> ProjectDoc:

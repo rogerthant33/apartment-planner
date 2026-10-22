@@ -8,7 +8,12 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QLabel, QLineEdit, QVBoxLa
 from apartment_planner.model import DoorSpec, Opening, ProjectDoc
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
-from apartment_planner.state.openings import opening, parse_opening_length, update_opening
+from apartment_planner.state.openings import (
+    opening,
+    parse_opening_offset,
+    parse_opening_width,
+    update_opening,
+)
 from apartment_planner.state.rooms import room
 from apartment_planner.state.units import format_length
 from apartment_planner.ui.furniture_panel import action_buttons
@@ -101,11 +106,17 @@ class OpeningPage(QWidget):
         unit = state.doc.settings.display_unit
         if field.text() == format_length(getattr(current, key), unit):
             return
-        self._apply(
-            lambda doc: update_opening(
-                doc, current.id, **parse_opening_length(doc, current, key, field.text(), unit)
+        text = field.text()
+        if key == "width":
+            self._apply(
+                lambda doc: update_opening(
+                    doc, current.id, width=parse_opening_width(doc, current, text, unit)
+                )
             )
-        )
+        else:
+            self._apply(
+                lambda doc: update_opening(doc, current.id, offset=parse_opening_offset(text, unit))
+            )
 
     def _commit_door(self, **changes: str) -> None:
         current = self._opening()
