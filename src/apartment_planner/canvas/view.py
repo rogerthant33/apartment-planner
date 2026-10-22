@@ -28,7 +28,8 @@ from apartment_planner.canvas.tools import (
 )
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.rooms import EditError, delete_selection
+from apartment_planner.state.errors import EditError
+from apartment_planner.state.rooms import delete_selection
 
 MIN_SCALE = 0.02  # screen px per cm: 50 m across a 1000 px window
 MAX_SCALE = 40.0

@@ -4,14 +4,15 @@ Tolerances are in cm; the canvas converts a fixed distance on screen.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from shapely.geometry import Point as ShapelyPoint
+from shapely.geometry import box
 
-from apartment_planner.geometry.shapes import room_polygon
+from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.snapping import nearest_on_segment
-from apartment_planner.geometry.transform import XY
-from apartment_planner.model import Room
+from apartment_planner.geometry.transform import XY, local_to_world_all
+from apartment_planner.model import Placed, PolygonShape, Room
 
 
 def vertex_at(room: Room, point: XY, tolerance: float) -> str | None:
@@ -47,3 +48,35 @@ def rect_outline(a: XY, b: XY) -> list[XY]:
     left, right = sorted((a[0], b[0]))
     top, bottom = sorted((a[1], b[1]))
     return [(left, top), (right, top), (right, bottom), (left, bottom)]
+
+
+def placed_at(items: Sequence[Placed], point: XY) -> str | None:
+    """The ID of the topmost (last drawn) furniture item or obstacle containing `point`."""
+    target = ShapelyPoint(point)
+    for item in reversed(items):
+        if placed_polygon(item).covers(target):
+            return item.id
+    return None
+
+
+def placed_in_rect(items: Sequence[Placed], a: XY, b: XY) -> list[str]:
+    """IDs of the items a rubber band from `a` to `b` touches."""
+    band = box(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+    return [item.id for item in items if placed_polygon(item).intersects(band)]
+
+
+def nearest_within[K](points: Mapping[K, XY], point: XY, tolerance: float) -> K | None:
+    """The key of the point nearest to `point`, if within `tolerance`."""
+    if not points:
+        return None
+    key = min(points, key=lambda k: math.dist(point, points[k]))
+    return key if math.dist(point, points[key]) <= tolerance else None
+
+
+def shape_corners(item: Placed) -> dict[int, XY]:
+    """World positions of a polygon item's corners, by index (empty for other shapes)."""
+    if not isinstance(item.shape, PolygonShape):
+        return {}
+    points = [(p.x, p.y) for p in item.shape.points]
+    world = local_to_world_all(points, (item.x, item.y), item.rotation)
+    return dict(enumerate(world))

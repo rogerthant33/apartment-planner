@@ -11,8 +11,8 @@ from apartment_planner.model import (
     new_id,
     new_project,
 )
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.rooms import (
-    EditError,
     add_room,
     delete_room,
     delete_selection,

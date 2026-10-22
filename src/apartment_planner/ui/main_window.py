@@ -20,7 +20,8 @@ from apartment_planner.persistence.errors import ProjectFileError
 from apartment_planner.persistence.library import Library, create_project, project_name
 from apartment_planner.persistence.session import ProjectSession
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.rooms import EditError, duplicate_room, selected_room
+from apartment_planner.state.errors import EditError
+from apartment_planner.state.rooms import duplicate_room, selected_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
 from apartment_planner.ui.open_project import OpenProject, local_now

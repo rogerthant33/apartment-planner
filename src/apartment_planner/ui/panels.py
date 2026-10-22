@@ -28,8 +28,8 @@ from apartment_planner.geometry.polygon import edge_lengths
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.model import ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.rooms import (
-    EditError,
     rename_room,
     selected_room,
     set_edge_length,

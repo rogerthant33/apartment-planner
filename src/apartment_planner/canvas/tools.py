@@ -18,8 +18,8 @@ from apartment_planner.geometry.snapping import room_targets, snap
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import ProjectDoc
 from apartment_planner.state.editor import EditorState
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.rooms import (
-    EditError,
     add_room,
     drawn_outline,
     insert_vertex,
