@@ -87,5 +87,4 @@ class ExportDialog(QDialog):
             (self.orientation, pdf),
             (self.scale, pdf),
         ):
-            widget.setVisible(shown)
-            self._form.labelForField(widget).setVisible(shown)
+            self._form.setRowVisible(widget, shown)

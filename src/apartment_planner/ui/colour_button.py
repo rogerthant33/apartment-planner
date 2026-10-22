@@ -1,6 +1,8 @@
 """Picking a fill colour: a swatch button that opens the colour dialog, and a
 button to go back to the default fill."""
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
@@ -13,9 +15,12 @@ SWATCH = QSize(36, 16)
 class ColourButton(QWidget):
     chosen = Signal(object)  # the new colour as #rrggbb, or None for the default
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, default: Callable[[], QColor], parent: QWidget | None = None) -> None:
+        """`default` gives the fill used when no colour is chosen, in the current theme;
+        the colour dialog starts from it."""
         super().__init__(parent)
         self.colour: str | None = None
+        self._default = default
         self.swatch = QToolButton()
         self.swatch.setIconSize(SWATCH)
         self.swatch.setToolTip("Choose a fill colour")
@@ -46,7 +51,9 @@ class ColourButton(QWidget):
         self.reset.setEnabled(self.isEnabled() and colour is not None)
 
     def _choose(self) -> None:
-        picked = dialogs.choose_colour(self, self.colour)
+        start = QColor(self.colour) if self.colour else self._default()
+        start.setAlpha(255)
+        picked = dialogs.choose_colour(self, start)
         if picked is not None:
             self._set(picked)
 

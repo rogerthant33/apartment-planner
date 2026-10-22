@@ -71,9 +71,9 @@ def open_image(parent: QWidget | None, folder: Path) -> Path | None:
     return Path(path) if path else None
 
 
-def choose_colour(parent: QWidget | None, current: str | None) -> str | None:
+def choose_colour(parent: QWidget | None, start: QColor) -> str | None:
     """A colour as #rrggbb, or None if the user cancels."""
-    colour = QColorDialog.getColor(QColor(current or "#cbc4b8"), parent, "Choose Colour")
+    colour = QColorDialog.getColor(start, parent, "Choose Colour")
     return colour.name() if colour.isValid() else None
 
 

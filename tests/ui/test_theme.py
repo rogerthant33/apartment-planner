@@ -28,6 +28,8 @@ def test_dark_mode_is_remembered_and_used_by_the_canvas(
     window.theme_action.trigger()
 
     assert style.is_dark()
+    padlock = window.lock_action.icon().pixmap(32, 32).toImage()
+    assert padlock.pixelColor(16, 22).name() == "#e2e2dc"  # light text colour on dark
     assert settings.value(DARK_KEY) in (True, "true")
     again = MainWindow(settings)
     qtbot.addWidget(again)

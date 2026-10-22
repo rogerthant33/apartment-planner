@@ -103,9 +103,6 @@ def image_size(data: bytes) -> tuple[int, int] | None:
     return (size.width(), size.height()) if reader.canRead() and size.isValid() else None
 
 
-APARTMENT_TOOLS = ("rect", "polygon", "door", "window", "opening")  # need it unlocked
-
-
 class MainWindow(QMainWindow):
     """The start screen when no project is open, otherwise the editor."""
 
@@ -157,6 +154,7 @@ class MainWindow(QMainWindow):
         for buttons in (pages.furniture_page.buttons, pages.selection_page.buttons):
             buttons["Duplicate"].clicked.connect(self.commands.duplicate)
             buttons["Delete"].clicked.connect(self.view.delete_selection)
+        pages.rooms_page.buttons["Delete"].clicked.connect(self.view.delete_selection)
         pages.selection_page.buttons["Group"].clicked.connect(self.commands.group)
         pages.selection_page.buttons["Ungroup"].clicked.connect(self.commands.ungroup)
         pages.selection_page.buttons["Lock"].clicked.connect(self.commands.toggle_lock)
@@ -289,17 +287,21 @@ class MainWindow(QMainWindow):
 
     def set_dark(self, dark: bool) -> None:
         """Switch between light and dark appearance, and remember the choice."""
-        app = QApplication.instance()
-        if isinstance(app, QApplication):
-            apply_theme(app, dark)
         self.settings.setValue(DARK_KEY, dark)
-        self._update_icons()
+        self._apply_dark(dark)
         self.findings.restyle()
         self.view.viewport().update()
         self._refresh_editor()
 
+    def _apply_dark(self, dark: bool) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            apply_theme(app, dark)
+        self._update_icons()
+
     def _update_icons(self) -> None:
-        colour = self.palette().color(QPalette.ColorRole.ButtonText)
+        # The application's palette: the window's catches up with a theme change later.
+        colour = QApplication.palette().color(QPalette.ColorRole.ButtonText)
         self.lock_action.setIcon(icons.lock_icon(colour))
         self.zoom_fit_action.setIcon(icons.fit_icon(colour))
         self.theme_action.setIcon(icons.theme_icon(colour))
@@ -330,7 +332,7 @@ class MainWindow(QMainWindow):
         settings = state.doc.settings.evolve(apartment_locked=locked)
         state.update_untracked(state.doc.evolve(settings=settings))
         if locked:
-            if self.view.tool in [self.view.tools[n] for n in APARTMENT_TOOLS]:
+            if self.view.tool.needs_apartment:
                 self.set_tool("select")
             state.select(f.id for f in selected_furniture(state.doc, state.selection))
 
@@ -543,8 +545,9 @@ class MainWindow(QMainWindow):
         locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
-        for name in APARTMENT_TOOLS:
-            self.tool_action[name].setEnabled(rooms)
+        for name, tool in self.view.tools.items():
+            if tool.needs_apartment:
+                self.tool_action[name].setEnabled(rooms)
         for action in self.obstacle_actions:
             action.setEnabled(rooms)
         self.tool_action["select"].setEnabled(state is not None)
@@ -649,9 +652,6 @@ class MainWindow(QMainWindow):
             tool.setToolTip(tip)
             self.tool_actions.addAction(tool)
             self.tool_action[name] = tool
-        self.select_tool_action = self.tool_action["select"]
-        self.rect_tool_action = self.tool_action["rect"]
-        self.polygon_tool_action = self.tool_action["polygon"]
         self.opening_tool_actions = [self.tool_action[n] for n in ("door", "window", "opening")]
         self.image_tool_actions = [self.tool_action[n] for n in ("image", "calibrate")]
         self.import_background_action = action("Import Image…", self.import_background)
@@ -662,7 +662,6 @@ class MainWindow(QMainWindow):
         self.theme_action = QAction("Dark Mode", self)
         self.theme_action.setCheckable(True)
         self.theme_action.setToolTip("Dark mode")
-        self.theme_action.toggled.connect(self.set_dark)
         self.zoom_in_action = action(
             "Zoom In", lambda: self.view.zoom_by(1.25), QKeySequence.StandardKey.ZoomIn
         )
@@ -803,13 +802,9 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(spacer)
         self.toolbar.addAction(self.theme_action)
         dark = saved_dark(self.settings)
-        self.theme_action.blockSignals(True)
-        self.theme_action.setChecked(dark)
-        self.theme_action.blockSignals(False)
-        app = QApplication.instance()
-        if isinstance(app, QApplication):
-            apply_theme(app, dark)
-        self._update_icons()
+        self.theme_action.setChecked(dark)  # before set_dark is connected: nothing to redraw yet
+        self._apply_dark(dark)
+        self.theme_action.toggled.connect(self.set_dark)
 
     def _add_panel(self, title: str, area: Qt.DockWidgetArea, widget: QWidget) -> QDockWidget:
         dock = QDockWidget(title, self)

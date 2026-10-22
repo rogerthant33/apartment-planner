@@ -2,6 +2,8 @@
 
 from collections.abc import Callable
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -9,10 +11,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from apartment_planner.canvas import style
 from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.furniture import (
@@ -25,6 +29,18 @@ from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
 from apartment_planner.ui.colour_button import ColourButton
 from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
+
+
+def tool_buttons(actions: list[QAction]) -> QHBoxLayout:
+    """A row of text buttons for the window's actions."""
+    row = QHBoxLayout()
+    for action in actions:
+        button = QToolButton()
+        button.setDefaultAction(action)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        row.addWidget(button)
+    row.addStretch()
+    return row
 
 
 def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
@@ -52,7 +68,7 @@ class FurniturePage(QWidget):
         self.fields: dict[str, QLineEdit] = {}
         form = QFormLayout()
         self._form = form
-        self.colour = ColourButton()
+        self.colour = ColourButton(lambda: style.colours.furniture_fill)
         self.colour.chosen.connect(self._set_colour)
         for key, label in FIELDS.items():
             field = QLineEdit()
@@ -98,17 +114,14 @@ class FurniturePage(QWidget):
         doc = state.doc
         values = field_values(item, doc.settings.display_unit)
         for key, field in self.fields.items():
-            visible = key in values
-            field.setVisible(visible)
-            self._form.labelForField(field).setVisible(visible)
+            self._form.setRowVisible(field, key in values)
             field.setText(values.get(key, ""))
             field.setEnabled(editable)
         self.colour.setEnabled(editable)
         self.colour.show_colour(item.color)
         furniture = isinstance(item, FurnitureItem)
         self.title.setText("Furniture" if furniture else "Obstacle (part of the apartment)")
-        self.room.setVisible(furniture)
-        self._form.labelForField(self.room).setVisible(furniture)
+        self._form.setRowVisible(self.room, furniture)
         self.locked.setVisible(furniture)
         locked = False
         if isinstance(item, FurnitureItem):
@@ -216,8 +229,6 @@ class SelectionPage(QWidget):
 
     def show_items(self, items: list[Placed], editable: bool) -> None:
         self.summary.setText(_summary(len(items), "items", [item.name for item in items]))
-        for button in self.buttons.values():
-            button.setVisible(True)
         furniture = [i for i in items if isinstance(i, FurnitureItem)]  # obstacles: none
         grouped = {item.group_id for item in furniture}
         self.buttons["Group"].setEnabled(
@@ -229,13 +240,23 @@ class SelectionPage(QWidget):
         for label in ("Duplicate", "Delete"):
             self.buttons[label].setEnabled(editable)
 
+
+class RoomsPage(QWidget):
+    """Several selected rooms: drag one to move them all; they can be deleted together."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        row, self.buttons = action_buttons("Delete")
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.summary)
+        layout.addLayout(row)
+        layout.addStretch()
+
     def show_rooms(self, rooms: list[Room], editable: bool) -> None:
-        """Several rooms: drag one to move them all; they can be deleted together."""
-        self.summary.setText(
-            _summary(len(rooms), "rooms", [r.name for r in rooms]) + " Drag one to move them all."
-        )
-        for label, button in self.buttons.items():
-            button.setVisible(label == "Delete")
+        names = [r.name for r in rooms]
+        self.summary.setText(_summary(len(rooms), "rooms", names) + " Drag one to move them all.")
         self.buttons["Delete"].setEnabled(editable)
 
 

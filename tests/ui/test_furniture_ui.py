@@ -175,7 +175,7 @@ def test_colour_is_picked_from_the_colour_dialog_and_can_be_reset(
 ) -> None:
     add_table(window)
     picker = window.properties.furniture_page.colour
-    monkeypatch.setattr(dialogs, "choose_colour", lambda parent, current: "#a0b0c0")
+    monkeypatch.setattr(dialogs, "choose_colour", lambda parent, start: "#a0b0c0")
 
     picker.swatch.click()
     assert furniture(window)[-1].color == "#a0b0c0"

@@ -8,12 +8,10 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QSlider,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +20,7 @@ from apartment_planner.model import ProjectDoc
 from apartment_planner.state.background import remove_background, update_background
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.units import parse_angle
+from apartment_planner.ui.furniture_panel import tool_buttons
 from apartment_planner.ui.inline_errors import commit_or_refuse, error_label
 
 
@@ -33,8 +32,7 @@ class BackgroundBox(QGroupBox):
         self.state: EditorState | None = None
         self.hint = QLabel("Import a floor plan to trace rooms over it.")
         self.hint.setWordWrap(True)
-        self._buttons = QHBoxLayout()
-        self._buttons.addStretch()
+        self._buttons = QVBoxLayout()  # filled by add_actions
         self.opacity = QSlider(Qt.Orientation.Horizontal)
         self.opacity.setRange(0, 100)
         # Dragging commits once, on release; keys, the wheel and clicks on the track
@@ -66,20 +64,16 @@ class BackgroundBox(QGroupBox):
 
     def add_actions(self, actions: list[QAction]) -> None:
         """Buttons for the window's actions: import, move and calibrate."""
-        for action in actions:
-            button = QToolButton()
-            button.setDefaultAction(action)
-            self._buttons.insertWidget(self._buttons.count() - 1, button)
+        self._buttons.addLayout(tool_buttons(actions))
 
     def show_background(self, state: EditorState, editable: bool) -> None:
         self.state = None  # don't write back while filling the fields
         bg = state.doc.background
-        for widget in (self.opacity, self.rotation, self.visible, self.locked, self.remove):
-            widget.setVisible(bg is not None)
+        for widget in (self.opacity, self.rotation, self.visible, self.locked):
+            self._form.setRowVisible(widget, bg is not None)
             widget.setEnabled(editable)
-            label = self._form.labelForField(widget)
-            if label is not None:
-                label.setVisible(bg is not None)
+        self.remove.setVisible(bg is not None)
+        self.remove.setEnabled(editable)
         self.hint.setText(
             "Import a floor plan to trace rooms over it."
             if bg is None

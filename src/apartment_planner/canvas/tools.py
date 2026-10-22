@@ -132,6 +132,7 @@ def segment_labels(points: Sequence[XY], unit: Unit, closed: bool) -> list[tuple
 
 class Tool:
     cursor = Qt.CursorShape.ArrowCursor
+    needs_apartment = False  # True: it edits the apartment, so it needs it unlocked
 
     def __init__(self, host: Host) -> None:
         self.host = host
@@ -473,6 +474,7 @@ class OpeningTool(Tool):
     """Click near a wall to put a door, window or plain opening there."""
 
     cursor = Qt.CursorShape.CrossCursor
+    needs_apartment = True
 
     def __init__(self, host: Host, kind: OpeningKind) -> None:
         super().__init__(host)
@@ -592,6 +594,7 @@ class RectRoomTool(Tool):
     """Drag out a rectangular room."""
 
     cursor = Qt.CursorShape.CrossCursor
+    needs_apartment = True
 
     def __init__(self, host: Host) -> None:
         super().__init__(host)
@@ -647,6 +650,7 @@ class PolygonTool(Tool):
     def __init__(self, host: Host, *, furniture: bool) -> None:
         super().__init__(host)
         self.draws_furniture = furniture
+        self.needs_apartment = not furniture
         self.points: list[XY] = []
 
     def press(self, pointer: Pointer) -> None:

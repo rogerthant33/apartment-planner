@@ -19,11 +19,11 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from apartment_planner.canvas import style
 from apartment_planner.geometry.polygon import edge_lengths
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.model import FurnitureItem, ProjectDoc, Room
@@ -40,7 +40,12 @@ from apartment_planner.state.rooms import (
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
 from apartment_planner.ui.background_panel import BackgroundBox
 from apartment_planner.ui.colour_button import ColourButton
-from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
+from apartment_planner.ui.furniture_panel import (
+    FurniturePage,
+    RoomsPage,
+    SelectionPage,
+    tool_buttons,
+)
 from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 from apartment_planner.ui.opening_panel import OpeningPage
 
@@ -69,7 +74,7 @@ class ToolsPanel(QWidget):
         self.layouts.activated.connect(lambda i: self.layout_chosen.emit(self.layouts.itemData(i)))
         layout_row = QHBoxLayout()
         layout_row.addWidget(self.layouts, 1)
-        layout_row.addLayout(_buttons(layout_actions))
+        layout_row.addLayout(tool_buttons(layout_actions))
         self.rooms = QListWidget()
         self.rooms.itemClicked.connect(lambda item: self.room_activated.emit(item.data(ROOM_ID)))
         self.furniture = QListWidget()
@@ -79,11 +84,11 @@ class ToolsPanel(QWidget):
         layout.addWidget(QLabel("Layout"))
         layout.addLayout(layout_row)
         layout.addWidget(QLabel("Tools"))
-        layout.addLayout(_buttons(tool_actions))
+        layout.addLayout(tool_buttons(tool_actions))
         layout.addWidget(QLabel("Add to the apartment (unlock it first)"))
-        layout.addLayout(_buttons(apartment_actions))
+        layout.addLayout(tool_buttons(apartment_actions))
         layout.addWidget(QLabel("Add furniture"))
-        layout.addLayout(_buttons(add_actions))
+        layout.addLayout(tool_buttons(add_actions))
         layout.addWidget(QLabel("Rooms"))
         layout.addWidget(self.rooms, 1)
         layout.addWidget(QLabel("Furniture (untick to hide)"))
@@ -115,17 +120,6 @@ class ToolsPanel(QWidget):
     def _furniture_clicked(self, item: QListWidgetItem) -> None:
         if item.checkState() == Qt.CheckState.Checked:
             self.furniture_activated.emit(item.data(ROOM_ID))
-
-
-def _buttons(actions: list[QAction]) -> QHBoxLayout:
-    row = QHBoxLayout()
-    for action in actions:
-        button = QToolButton()
-        button.setDefaultAction(action)
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        row.addWidget(button)
-    row.addStretch()
-    return row
 
 
 def _sync_list(
@@ -164,7 +158,7 @@ class RoomPage(QWidget):
         self.name = QLineEdit()
         self.name.editingFinished.connect(self._rename)
         self.area = QLabel()
-        self.colour = ColourButton()
+        self.colour = ColourButton(lambda: style.colours.room_fill)
         self.colour.chosen.connect(self._set_colour)
         self.edges: list[QLineEdit] = []
         self._edge_form = QFormLayout()
@@ -350,12 +344,14 @@ class PropertiesPanel(QStackedWidget):
         self.room_page = RoomPage()
         self.furniture_page = FurniturePage()
         self.selection_page = SelectionPage()
+        self.rooms_page = RoomsPage()
         self.opening_page = OpeningPage()
         for page in (
             self.settings_page,
             self.room_page,
             self.furniture_page,
             self.selection_page,
+            self.rooms_page,
             self.opening_page,
         ):
             self.addWidget(page)
@@ -377,8 +373,8 @@ class PropertiesPanel(QStackedWidget):
             self.furniture_page.show_item(state, placed[0], editable)
             self.setCurrentWidget(self.furniture_page)
         elif len(rooms) > 1:
-            self.selection_page.show_rooms(rooms, editable and not doc.settings.apartment_locked)
-            self.setCurrentWidget(self.selection_page)
+            self.rooms_page.show_rooms(rooms, apartment)
+            self.setCurrentWidget(self.rooms_page)
         elif openings:
             self.opening_page.show_opening(state, openings[0], apartment)
             self.setCurrentWidget(self.opening_page)
