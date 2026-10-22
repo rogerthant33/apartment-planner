@@ -255,6 +255,8 @@ class BackgroundItem(QGraphicsPixmapItem):
         self.setRotation(background.rotation)
         self.setOpacity(background.opacity)
         self.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        # Nothing hit-tests the image, so skip building a mask from its pixels.
+        self.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
         self.setZValue(-1)
 
 

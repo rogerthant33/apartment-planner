@@ -43,7 +43,11 @@ from apartment_planner.model import (
     PolygonShape,
     ProjectDoc,
 )
-from apartment_planner.state.background import image_to_world, move_background
+from apartment_planner.state.background import (
+    background_corners,
+    move_background,
+    require_unlocked,
+)
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
@@ -520,11 +524,12 @@ class BackgroundTool(Tool):
         self._delta: XY | None = None
 
     def press(self, pointer: Pointer) -> None:
-        bg = self.doc.background
-        if bg is None or not self.host.editable:
+        if self.doc.background is None or not self.host.editable:
             return
-        if bg.locked:
-            self.host.notify("The background image is locked. Unlock it to move it.")
+        try:
+            require_unlocked(self.doc, "move it")
+        except EditError as error:
+            self.host.notify(str(error))
             return
         self._start = pointer.pos
 
@@ -532,11 +537,8 @@ class BackgroundTool(Tool):
         bg, size = self.doc.background, self.host.background_size()
         if self._start is None or bg is None or size is None:
             return
-        self._delta = (pointer.pos[0] - self._start[0], pointer.pos[1] - self._start[1])
-        w, h = size
-        corners = [image_to_world(bg, c) for c in ((0, 0), (w, 0), (w, h), (0, h))]
-        dx, dy = self._delta
-        moved = [(x + dx, y + dy) for x, y in corners]
+        self._delta = dx, dy = (pointer.pos[0] - self._start[0], pointer.pos[1] - self._start[1])
+        moved = [(x + dx, y + dy) for x, y in background_corners(bg, size)]
         self.host.plan.preview.show_outline(moved, closed=True, valid=True)
 
     def release(self, pointer: Pointer) -> None:
@@ -565,19 +567,15 @@ class CalibrateTool(Tool):
         if self._first is None:
             self._first = pointer.pos
             return
-        first, self._first = self._first, None
+        first = self._first
         self.cancel()
         self.host.ask_calibration(first, pointer.pos)
 
     def move(self, pointer: Pointer) -> None:
         if self._first is not None:
-            label = format_length(
-                math.dist(self._first, pointer.pos), self.doc.settings.display_unit
-            )
-            middle = ((self._first[0] + pointer.pos[0]) / 2, (self._first[1] + pointer.pos[1]) / 2)
-            self.host.plan.preview.show_outline(
-                [self._first, pointer.pos], closed=False, valid=True, labels=[(middle, label)]
-            )
+            line = [self._first, pointer.pos]
+            labels = segment_labels(line, self.doc.settings.display_unit, closed=False)
+            self.host.plan.preview.show_outline(line, closed=False, valid=True, labels=labels)
 
     def key(self, key: int) -> bool:
         if key == Qt.Key.Key_Escape and self._first is not None:

@@ -2,8 +2,8 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QSettings, Qt
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPalette, QPixmap
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QSettings, Qt
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QImageReader, QKeySequence, QPalette
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -90,6 +90,17 @@ class Banner(QFrame):
     def _trigger(self) -> None:
         if self._action is not None:
             self._action.trigger()
+
+
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """An image's size in pixels from its header, without decoding it; None if Qt
+    can't read it."""
+    buffer = QBuffer()
+    buffer.setData(QByteArray(data))
+    buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+    reader = QImageReader(buffer)
+    size = reader.size()
+    return (size.width(), size.height()) if reader.canRead() and size.isValid() else None
 
 
 APARTMENT_TOOLS = ("rect", "polygon", "door", "window", "opening")  # need it unlocked
@@ -424,8 +435,8 @@ class MainWindow(QMainWindow):
             dialogs.show_error(self, "Import Image", dialogs.error_message(error))
             return
         mime_type = image_type(data)
-        pixmap = QPixmap()
-        if mime_type is None or not pixmap.loadFromData(data):
+        size = image_size(data)  # read from the header: the view decodes it once, to draw
+        if mime_type is None or size is None:
             dialogs.show_error(
                 self,
                 "Import Image",
@@ -434,11 +445,10 @@ class MainWindow(QMainWindow):
             )
             return
         centre = self.view.mapToScene(self.view.viewport().rect().center())
-        doc, asset_id = set_background(
-            project.doc, mime_type, (pixmap.width(), pixmap.height()), (centre.x(), centre.y())
+        asset_id = project.add_asset(data)
+        project.editor.commit(
+            set_background(project.doc, asset_id, mime_type, size, (centre.x(), centre.y()))
         )
-        project.assets[asset_id] = data
-        project.editor.commit(doc)
         self.set_tool("calibrate")
         self.view.notify("Click two points a known distance apart on the image to set its scale.")
 

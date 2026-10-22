@@ -4,6 +4,7 @@ import pytest
 
 from apartment_planner.model import ProjectDoc, new_project
 from apartment_planner.state.background import (
+    background_corners,
     calibrate,
     image_to_world,
     image_type,
@@ -23,7 +24,7 @@ def close(p: tuple[float, float], q: tuple[float, float]) -> bool:
 
 def placed(rotation: float = 0.0) -> ProjectDoc:
     """A 400 by 200 pixel image centred on (100, 50), unlocked."""
-    doc, _ = set_background(new_project("Flat", now=NOW), "image/png", (400, 200), (100, 50))
+    doc = set_background(new_project("Flat", now=NOW), "a1", "image/png", (400, 200), (100, 50))
     return update_background(doc, rotation=rotation)
 
 
@@ -47,12 +48,12 @@ def test_image_type_from_the_first_bytes(data: bytes, expected: str | None) -> N
 def test_a_new_image_is_centred_unlocked_and_replaces_the_old_one() -> None:
     doc = placed()
     first = doc.background
-    doc, asset_id = set_background(doc, "image/jpeg", (11, 7), (0, 0))
+    doc = set_background(doc, "b2", "image/jpeg", (11, 7), (0, 0))
 
     bg = doc.background
     assert bg is not None and first is not None
     assert (bg.asset_id, bg.mime_type, bg.origin.x, bg.origin.y) == (
-        asset_id,
+        "b2",
         "image/jpeg",
         -5.5,
         -3.5,
@@ -134,3 +135,16 @@ def test_a_locked_image_is_not_calibrated() -> None:
 
     with pytest.raises(EditError, match="Unlock it to calibrate it"):
         calibrate(doc, (0, 0), (100, 0), 350)
+
+
+@pytest.mark.parametrize(("rotation", "expected"), [(0, (300, 150)), (90, (-300, 350))])
+def test_background_corners_run_clockwise_from_the_top_left(
+    rotation: float, expected: tuple[float, float]
+) -> None:
+    bg = placed(rotation).background  # its top-left is at (-100, -50)
+    assert bg is not None
+
+    corners = background_corners(bg, (400, 200))
+
+    assert close(corners[0], (-100, -50))
+    assert close(corners[2], expected)

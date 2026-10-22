@@ -8,8 +8,9 @@ import math
 from typing import Any, Literal
 
 from apartment_planner.geometry.constants import MIN_EDGE_LENGTH
-from apartment_planner.geometry.transform import XY, rotate
-from apartment_planner.model import BackgroundImage, Point, ProjectDoc, new_id
+from apartment_planner.geometry.hits import rect_outline
+from apartment_planner.geometry.transform import XY, local_to_world, rotate, world_to_local
+from apartment_planner.model import BackgroundImage, Point, ProjectDoc
 from apartment_planner.state.errors import EditError
 
 MimeType = Literal["image/png", "image/jpeg", "image/webp"]
@@ -29,21 +30,33 @@ def image_type(data: bytes) -> MimeType | None:
 
 
 def image_to_world(bg: BackgroundImage, pixel: XY) -> XY:
-    dx, dy = rotate((pixel[0] * bg.cm_per_pixel, pixel[1] * bg.cm_per_pixel), bg.rotation)
-    return (bg.origin.x + dx, bg.origin.y + dy)
+    scaled = (pixel[0] * bg.cm_per_pixel, pixel[1] * bg.cm_per_pixel)
+    return local_to_world(scaled, (bg.origin.x, bg.origin.y), bg.rotation)
 
 
 def world_to_image(bg: BackgroundImage, world: XY) -> XY:
-    dx, dy = rotate((world[0] - bg.origin.x, world[1] - bg.origin.y), -bg.rotation)
-    return (dx / bg.cm_per_pixel, dy / bg.cm_per_pixel)
+    x, y = world_to_local(world, (bg.origin.x, bg.origin.y), bg.rotation)
+    return (x / bg.cm_per_pixel, y / bg.cm_per_pixel)
+
+
+def background_corners(bg: BackgroundImage, size: tuple[int, int]) -> list[XY]:
+    """The world positions of an image's corners, clockwise from its top-left."""
+    return [image_to_world(bg, corner) for corner in rect_outline((0, 0), size)]
+
+
+def require_unlocked(doc: ProjectDoc, to: str) -> BackgroundImage:
+    """The background image, if it can be changed; `to` says what for, in the message."""
+    bg = _background(doc)
+    if bg.locked:
+        raise EditError(f"The background image is locked. Unlock it to {to}.")
+    return bg
 
 
 def set_background(
-    doc: ProjectDoc, mime_type: MimeType, size: tuple[int, int], centre: XY
-) -> tuple[ProjectDoc, str]:
-    """A new background image of `size` pixels, centred on `centre`, replacing any
-    other. Returns the document and the new image's asset ID."""
-    asset_id = new_id()
+    doc: ProjectDoc, asset_id: str, mime_type: MimeType, size: tuple[int, int], centre: XY
+) -> ProjectDoc:
+    """A new background image (the asset `asset_id`, `size` pixels), centred on
+    `centre`, replacing any other."""
     # pragma below: the default scale is 1, so dividing by it or raising to it is the same.
     width, height = (n * DEFAULT_CM_PER_PIXEL for n in size)  # pragma: no mutate
     background = BackgroundImage(
@@ -53,7 +66,7 @@ def set_background(
         cm_per_pixel=DEFAULT_CM_PER_PIXEL,
         locked=False,  # it still has to be calibrated and moved into place
     )
-    return doc.evolve(background=background), asset_id
+    return doc.evolve(background=background)
 
 
 def update_background(doc: ProjectDoc, **changes: Any) -> ProjectDoc:
@@ -62,9 +75,7 @@ def update_background(doc: ProjectDoc, **changes: Any) -> ProjectDoc:
 
 
 def move_background(doc: ProjectDoc, delta: XY) -> ProjectDoc:
-    bg = _background(doc)
-    if bg.locked:
-        raise EditError("The background image is locked. Unlock it to move it.")
+    bg = require_unlocked(doc, "move it")
     origin = Point(x=bg.origin.x + delta[0], y=bg.origin.y + delta[1])
     return doc.evolve(background=bg.evolve(origin=origin))
 
@@ -72,9 +83,7 @@ def move_background(doc: ProjectDoc, delta: XY) -> ProjectDoc:
 def calibrate(doc: ProjectDoc, a: XY, b: XY, distance: float) -> ProjectDoc:
     """Scale the image so the points clicked at world `a` and `b` are `distance` cm
     apart. The image stays put at `a`."""
-    bg = _background(doc)
-    if bg.locked:
-        raise EditError("The background image is locked. Unlock it to calibrate it.")
+    bg = require_unlocked(doc, "calibrate it")
     if not distance > 0:
         raise EditError("Enter the real distance between the two points, such as 3.5 m.")
     clicked = math.dist(a, b)

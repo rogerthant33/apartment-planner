@@ -35,7 +35,7 @@ from apartment_planner.fit.findings import Finding, check_fit
 from apartment_planner.geometry.shapes import plan_bounds
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import FurnitureItem, ProjectDoc
-from apartment_planner.state.background import image_to_world
+from apartment_planner.state.background import background_corners
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import delete_openings, selected_openings
@@ -67,8 +67,8 @@ class PlanView(QGraphicsView):
         self.editable = False
         self.hidden: frozenset[str] = frozenset()  # furniture hidden from view, not saved
         self._checked: tuple[ProjectDoc | None, list[Finding]] = (None, [])  # doc, findings
-        self.assets: Mapping[str, bytes] = {}  # the open project's images, by asset ID
-        self._pixmaps: dict[str, QPixmap] = {}
+        self._assets: Mapping[str, bytes] = {}
+        self._pixmap: tuple[str, QPixmap] | None = None  # the shown image, decoded
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
@@ -158,16 +158,26 @@ class PlanView(QGraphicsView):
                 background=self.background_pixmap(),
             )
 
+    @property
+    def assets(self) -> Mapping[str, bytes]:
+        """The open project's images, by asset ID."""
+        return self._assets
+
+    @assets.setter
+    def assets(self, assets: Mapping[str, bytes]) -> None:
+        self._assets, self._pixmap = assets, None
+
     def background_pixmap(self) -> QPixmap | None:
-        """The background image's picture; None if there's none or it can't be read."""
+        """The background image's picture, if it's shown; None if there's none, it's
+        hidden or it can't be read. Only that one image is kept decoded."""
         bg = self._state.doc.background if self._state is not None else None
-        if bg is None or bg.asset_id not in self.assets:
+        if bg is None or not bg.visible or bg.asset_id not in self._assets:
             return None
-        if bg.asset_id not in self._pixmaps:
+        if self._pixmap is None or self._pixmap[0] != bg.asset_id:
             pixmap = QPixmap()
-            pixmap.loadFromData(self.assets[bg.asset_id])
-            self._pixmaps = {bg.asset_id: pixmap}  # only the current image stays decoded
-        pixmap = self._pixmaps[bg.asset_id]
+            pixmap.loadFromData(self._assets[bg.asset_id])
+            self._pixmap = (bg.asset_id, pixmap)
+        pixmap = self._pixmap[1]
         return None if pixmap.isNull() else pixmap
 
     def background_size(self) -> tuple[int, int] | None:
@@ -177,10 +187,9 @@ class PlanView(QGraphicsView):
     def _background_corners(self) -> list[XY]:
         bg = self._state.doc.background if self._state is not None else None
         size = self.background_size()
-        if bg is None or size is None or not bg.visible:
+        if bg is None or size is None:  # no image, or it's hidden
             return []
-        w, h = size
-        return [image_to_world(bg, corner) for corner in ((0, 0), (w, 0), (w, h), (0, h))]
+        return background_corners(bg, size)
 
     def ask_calibration(self, a: XY, b: XY) -> None:
         self.calibration_requested.emit(a, b)
