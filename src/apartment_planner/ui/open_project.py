@@ -66,6 +66,12 @@ class OpenProject(QObject):
         return self.session.path
 
     @property
+    def assets(self) -> dict[str, bytes]:
+        """Images by asset ID. Only those the document refers to are saved, so undo
+        can bring back an earlier background."""
+        return self._assets
+
+    @property
     def name(self) -> str:
         return project_name(self.path)
 

@@ -2,9 +2,11 @@ import math
 from collections.abc import Iterable, Sequence
 
 from PySide6.QtCore import QObject, QRectF
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from apartment_planner.canvas.items import (
+    BackgroundItem,
     ClearanceItem,
     HandleItem,
     OpeningItem,
@@ -38,6 +40,7 @@ class PlanScene(QGraphicsScene):
         self.furniture: list[PlacedItem] = []  # and obstacles
         self.openings: list[OpeningItem] = []
         self.readouts: list[ReadoutItem] = []
+        self.background: BackgroundItem | None = None
         self._extras: list[QGraphicsItem] = []  # handles and clearance zones
         self.preview = PreviewItem()
         self.addItem(self.preview)
@@ -48,6 +51,9 @@ class PlanScene(QGraphicsScene):
             self.removeItem(item)
         self.rooms, self.furniture, self.openings, self._extras = [], [], [], []
         self.readouts = []
+        if self.background is not None:
+            self.removeItem(self.background)
+            self.background = None
         self.preview.clear()
 
     def sync(
@@ -59,14 +65,21 @@ class PlanScene(QGraphicsScene):
         hidden: Iterable[str] = (),
         rotate_offset: float = 0.0,
         findings: Sequence[Finding] = (),
+        background: QPixmap | None = None,
+        dimensions: bool = False,
     ) -> None:
         """Redraw everything. `rotate_offset` is the rotate handle's distance in cm.
 
         Items involved in `findings` are outlined in their severity's colour.
+        `background` is the background image's picture, if it has one and it's
+        shown. `dimensions` labels every room's edges, not just the selected one's.
         """
         self.clear_plan()
         unit = doc.settings.display_unit
         flags = _flags(findings)
+        if doc.background is not None and doc.background.visible and background is not None:
+            self.background = BackgroundItem(doc.background, background)
+            self.addItem(self.background)
         handles = editable and not doc.settings.apartment_locked
         for room in doc.apartment.rooms:
             selected = room.id in selection
@@ -75,6 +88,7 @@ class PlanScene(QGraphicsScene):
                 room,
                 unit,
                 selected=selected,
+                dimensions=dimensions,
                 handles=selected and handles,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),

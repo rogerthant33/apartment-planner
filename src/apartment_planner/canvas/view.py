@@ -4,6 +4,7 @@ View coordinates become world cm here (`mapToScene`) and nowhere else.
 """
 
 import math
+from collections.abc import Mapping
 
 from PySide6.QtCore import QEvent, QLineF, QPoint, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -13,14 +14,16 @@ from PySide6.QtGui import (
     QNativeGestureEvent,
     QPainter,
     QPen,
+    QPixmap,
     QWheelEvent,
 )
 from PySide6.QtWidgets import QGraphicsView, QWidget
-from shapely import unary_union
 
 from apartment_planner.canvas import style
 from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.canvas.tools import (
+    BackgroundTool,
+    CalibrateTool,
     OpeningTool,
     Pointer,
     PolygonTool,
@@ -29,8 +32,10 @@ from apartment_planner.canvas.tools import (
     Tool,
 )
 from apartment_planner.fit.findings import Finding, check_fit
-from apartment_planner.geometry.shapes import placed_polygon, room_polygon
+from apartment_planner.geometry.shapes import plan_bounds
+from apartment_planner.geometry.transform import XY
 from apartment_planner.model import FurnitureItem, ProjectDoc
+from apartment_planner.state.background import image_to_world
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import delete_openings, selected_openings
@@ -45,6 +50,7 @@ EMPTY_PLAN = QRectF(0, 0, 600, 400)  # what "zoom to fit" shows without rooms
 
 class PlanView(QGraphicsView):
     message = Signal(str)  # something the user should know, e.g. why an edit was refused
+    calibration_requested = Signal(tuple, tuple)  # two world points on the background
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -60,6 +66,8 @@ class PlanView(QGraphicsView):
         self.editable = False
         self.hidden: frozenset[str] = frozenset()  # furniture hidden from view, not saved
         self._checked: tuple[ProjectDoc | None, list[Finding]] = (None, [])  # doc, findings
+        self.assets: Mapping[str, bytes] = {}  # the open project's images, by asset ID
+        self._pixmaps: dict[str, QPixmap] = {}
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
@@ -67,6 +75,8 @@ class PlanView(QGraphicsView):
             "door": OpeningTool(self, "door"),
             "window": OpeningTool(self, "window"),
             "opening": OpeningTool(self, "opening"),
+            "image": BackgroundTool(self),
+            "calibrate": CalibrateTool(self),
         }
         self.tool: Tool = self.tools["select"]
         self._pan_from: QPoint | None = None
@@ -143,7 +153,35 @@ class PlanView(QGraphicsView):
                 hidden=self.hidden,
                 rotate_offset=style.ROTATE_PX / self.zoom,
                 findings=self.findings,
+                background=self.background_pixmap(),
             )
+
+    def background_pixmap(self) -> QPixmap | None:
+        """The background image's picture; None if there's none or it can't be read."""
+        bg = self._state.doc.background if self._state is not None else None
+        if bg is None or bg.asset_id not in self.assets:
+            return None
+        if bg.asset_id not in self._pixmaps:
+            pixmap = QPixmap()
+            pixmap.loadFromData(self.assets[bg.asset_id])
+            self._pixmaps[bg.asset_id] = pixmap
+        pixmap = self._pixmaps[bg.asset_id]
+        return None if pixmap.isNull() else pixmap
+
+    def background_size(self) -> tuple[int, int] | None:
+        pixmap = self.background_pixmap()
+        return None if pixmap is None else (pixmap.width(), pixmap.height())
+
+    def _background_corners(self) -> list[XY]:
+        bg = self._state.doc.background if self._state is not None else None
+        size = self.background_size()
+        if bg is None or size is None or not bg.visible:
+            return []
+        w, h = size
+        return [image_to_world(bg, corner) for corner in ((0, 0), (w, 0), (w, h), (0, h))]
+
+    def ask_calibration(self, a: XY, b: XY) -> None:
+        self.calibration_requested.emit(a, b)
 
     @property
     def findings(self) -> list[Finding]:
@@ -180,14 +218,18 @@ class PlanView(QGraphicsView):
         self.refresh()  # the rotate handle keeps its distance on screen
 
     def zoom_to_fit(self) -> None:
-        """Show every room and furniture item of the active layout."""
+        """Show every room, obstacle and furniture item of the active layout, and the
+        background image if it's shown."""
         bounds = EMPTY_PLAN
         if self._state is not None:
             doc = self._state.doc
-            shapes = [room_polygon(r) for r in doc.apartment.rooms]
-            shapes += [placed_polygon(f) for f in doc.active_layout.furniture]
-            if shapes:
-                left, top, right, bottom = unary_union(shapes).bounds
+            found = plan_bounds(
+                doc.apartment.rooms,
+                [*doc.apartment.obstacles, *doc.active_layout.furniture],
+                self._background_corners(),
+            )
+            if found is not None:
+                left, top, right, bottom = found
                 bounds = QRectF(left, top, right - left, bottom - top)
         margin = max(bounds.width(), bounds.height()) * 0.08
         self.fitInView(

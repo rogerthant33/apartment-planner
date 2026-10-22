@@ -1,8 +1,9 @@
 """Model objects to Shapely geometry. Build footprints only through these helpers."""
 
 import math
+from collections.abc import Iterable, Sequence
 
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPoint, Polygon
 
 from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
 from apartment_planner.geometry.polygon import points_polygon
@@ -42,6 +43,20 @@ def placed_polygon(item: Placed) -> Polygon:
 
 def room_polygon(room: Room) -> Polygon:
     return points_polygon(room.vertices)
+
+
+def plan_bounds(
+    rooms: Iterable[Room], items: Iterable[Placed], points: Sequence[XY] = ()
+) -> tuple[float, float, float, float] | None:
+    """(left, top, right, bottom) around the rooms, items and extra points; None if
+    there's nothing."""
+    boxes = [room_polygon(r).bounds for r in rooms] + [placed_polygon(i).bounds for i in items]
+    if points:
+        boxes.append(MultiPoint(points).bounds)
+    if not boxes:
+        return None
+    lefts, tops, rights, bottoms = zip(*boxes, strict=True)
+    return min(lefts), min(tops), max(rights), max(bottoms)
 
 
 def l_shape(width: float, depth: float, arm_width: float, arm_depth: float) -> PolygonShape:

@@ -37,6 +37,7 @@ from apartment_planner.state.rooms import (
     set_edge_length,
 )
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
+from apartment_planner.ui.background_panel import BackgroundBox
 from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
 from apartment_planner.ui.inline_errors import error_label, show_error
 from apartment_planner.ui.opening_panel import OpeningPage
@@ -254,10 +255,14 @@ class RoomPage(QWidget):
 
 
 class SettingsPage(QWidget):
-    """Project settings, shown when nothing is selected. Not part of undo."""
+    """Project settings, shown when nothing is selected. Not part of undo.
+
+    The background image controls below them are: the image is part of the plan.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.background = BackgroundBox()
         self.state: EditorState | None = None
         self.unit = QComboBox()
         self.unit.addItems(list(UNITS))
@@ -279,9 +284,11 @@ class SettingsPage(QWidget):
         layout.addWidget(QLabel("Project settings"))
         layout.addLayout(form)
         layout.addWidget(self.error)
+        layout.addWidget(self.background)
         layout.addStretch()
 
     def show_settings(self, state: EditorState, editable: bool) -> None:
+        self.background.show_background(state, editable)
         self.state = None  # don't write back while filling the fields
         settings = state.doc.settings
         self.unit.setCurrentText(settings.display_unit)

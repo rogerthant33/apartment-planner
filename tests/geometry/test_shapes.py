@@ -3,7 +3,13 @@ import math
 import pytest
 
 from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
-from apartment_planner.geometry.shapes import l_shape, placed_polygon, room_polygon, shape_outline
+from apartment_planner.geometry.shapes import (
+    l_shape,
+    placed_polygon,
+    plan_bounds,
+    room_polygon,
+    shape_outline,
+)
 from apartment_planner.model import EllipseShape, RectShape
 from tests.factories import item, polygon_shape, rect_item, rect_room
 
@@ -71,3 +77,12 @@ def test_l_shape_area_and_bounds() -> None:
 def test_l_shape_rejects_arm_outside_the_whole(arm_width: float, arm_depth: float) -> None:
     with pytest.raises(ValueError, match="arm"):
         l_shape(width=250, depth=160, arm_width=arm_width, arm_depth=arm_depth)
+
+
+def test_plan_bounds_cover_rooms_turned_items_and_points() -> None:
+    room = rect_room(0, 0, 400, 300)
+    turned = rect_item(200, 100, x=450, y=150, rotation=90)  # spans x 400..500, y 50..250
+
+    assert plan_bounds([room], [turned], [(-20, 310)]) == (-20, 0, 500, 310)
+    assert plan_bounds([], [turned]) == pytest.approx((400, 50, 500, 250))
+    assert plan_bounds([], []) is None

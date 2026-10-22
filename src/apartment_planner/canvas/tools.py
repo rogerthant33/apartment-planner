@@ -42,6 +42,7 @@ from apartment_planner.model import (
     PolygonShape,
     ProjectDoc,
 )
+from apartment_planner.state.background import image_to_world, move_background
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
@@ -96,6 +97,8 @@ class Host(Protocol):
     def hidden(self) -> frozenset[str]: ...
     def can_edit_rooms(self) -> bool: ...
     def notify(self, message: str) -> None: ...
+    def background_size(self) -> tuple[int, int] | None: ...
+    def ask_calibration(self, a: XY, b: XY) -> None: ...
 
 
 def footprint(item: Placed) -> list[XY]:
@@ -456,6 +459,87 @@ class OpeningTool(Tool):
         doc, opening_id = place()
         self.cancel()
         self.commit(doc, select=frozenset({opening_id}))
+
+
+class BackgroundTool(Tool):
+    """Drag the background image into place."""
+
+    cursor = Qt.CursorShape.SizeAllCursor
+
+    def __init__(self, host: Host) -> None:
+        super().__init__(host)
+        self._start: XY | None = None
+        self._delta: XY | None = None
+
+    def press(self, pointer: Pointer) -> None:
+        bg = self.doc.background
+        if bg is None or not self.host.editable:
+            return
+        if bg.locked:
+            self.host.notify("The background image is locked. Unlock it to move it.")
+            return
+        self._start = pointer.pos
+
+    def move(self, pointer: Pointer) -> None:
+        bg, size = self.doc.background, self.host.background_size()
+        if self._start is None or bg is None or size is None:
+            return
+        self._delta = (pointer.pos[0] - self._start[0], pointer.pos[1] - self._start[1])
+        w, h = size
+        corners = [image_to_world(bg, c) for c in ((0, 0), (w, 0), (w, h), (0, h))]
+        dx, dy = self._delta
+        moved = [(x + dx, y + dy) for x, y in corners]
+        self.host.plan.preview.show_outline(moved, closed=True, valid=True)
+
+    def release(self, pointer: Pointer) -> None:
+        delta = self._delta
+        self.cancel()
+        if delta is not None:
+            self.attempt(lambda: move_background(self.doc, delta))
+
+    def cancel(self) -> None:
+        self._start = self._delta = None
+        super().cancel()
+
+
+class CalibrateTool(Tool):
+    """Click two points on the background image; then the real distance is asked for."""
+
+    cursor = Qt.CursorShape.CrossCursor
+
+    def __init__(self, host: Host) -> None:
+        super().__init__(host)
+        self._first: XY | None = None
+
+    def press(self, pointer: Pointer) -> None:
+        if self.doc.background is None or not self.host.editable:
+            return
+        if self._first is None:
+            self._first = pointer.pos
+            return
+        first, self._first = self._first, None
+        self.cancel()
+        self.host.ask_calibration(first, pointer.pos)
+
+    def move(self, pointer: Pointer) -> None:
+        if self._first is not None:
+            label = format_length(
+                math.dist(self._first, pointer.pos), self.doc.settings.display_unit
+            )
+            middle = ((self._first[0] + pointer.pos[0]) / 2, (self._first[1] + pointer.pos[1]) / 2)
+            self.host.plan.preview.show_outline(
+                [self._first, pointer.pos], closed=False, valid=True, labels=[(middle, label)]
+            )
+
+    def key(self, key: int) -> bool:
+        if key == Qt.Key.Key_Escape and self._first is not None:
+            self.cancel()
+            return True
+        return False
+
+    def cancel(self) -> None:
+        self._first = None
+        super().cancel()
 
 
 class RectRoomTool(Tool):

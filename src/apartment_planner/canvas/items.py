@@ -14,6 +14,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QPolygonF,
 )
 from PySide6.QtWidgets import (
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsLineItem,
     QGraphicsPathItem,
+    QGraphicsPixmapItem,
     QGraphicsPolygonItem,
     QGraphicsRectItem,
     QStyleOptionGraphicsItem,
@@ -34,6 +36,7 @@ from apartment_planner.geometry.readouts import Segment
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import (
+    BackgroundImage,
     EllipseShape,
     FurnitureItem,
     Obstacle,
@@ -123,6 +126,7 @@ class RoomItem(QGraphicsPolygonItem):
         handles: bool,
         selected_vertex: str | None = None,
         flag: Severity | None = None,
+        dimensions: bool = False,
     ) -> None:
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
@@ -140,7 +144,7 @@ class RoomItem(QGraphicsPolygonItem):
 
         self.edge_labels: list[TextLabel] = []
         self.handles: list[HandleItem] = []
-        if selected:
+        if selected or dimensions:
             corners = [(v.x, v.y) for v in room.vertices]
             for a, b in zip(corners, [*corners[1:], corners[0]], strict=True):
                 label = TextLabel(format_length(math.dist(a, b), unit), self)
@@ -213,6 +217,19 @@ class PlacedItem(QGraphicsPathItem):
                 label = TextLabel(format_length(math.dist(a, b), unit), self)
                 label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
                 self.edge_labels.append(label)
+
+
+class BackgroundItem(QGraphicsPixmapItem):
+    """The floor-plan image under everything, placed and scaled as calibrated."""
+
+    def __init__(self, background: BackgroundImage, pixmap: QPixmap) -> None:
+        super().__init__(pixmap)
+        self.setPos(background.origin.x, background.origin.y)
+        self.setScale(background.cm_per_pixel)
+        self.setRotation(background.rotation)
+        self.setOpacity(background.opacity)
+        self.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        self.setZValue(-1)
 
 
 class ClearanceItem(QGraphicsPathItem):

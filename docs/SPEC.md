@@ -372,6 +372,15 @@ to 10), the projects folder and window geometry are stored in `QSettings`.
   distance between them. Then position (drag) and optionally rotate the image.
 - Opacity, visibility and lock controls. Rooms can be traced over it.
 - The calibration is saved in the project.
+- Import (File menu, or the "Background image" box under the project
+  settings) replaces any earlier image. It arrives unlocked at 1 cm per pixel,
+  centred in the view, and the Calibrate tool starts: click two points, then
+  enter the distance (such as 3.5 m). Calibration scales the image about the
+  first point. The Move tool drags it while it's unlocked; rotation turns it
+  about its top-left corner. Image edits are undoable like any other change.
+- Only PNG, JPEG and WebP files are taken, recognised by their contents. The
+  image is drawn under the rooms, included in zoom to fit, and left out of
+  plan exports.
 
 ## 11. Data model (schema v1)
 

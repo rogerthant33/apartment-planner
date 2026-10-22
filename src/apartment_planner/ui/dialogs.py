@@ -60,6 +60,13 @@ def open_file(parent: QWidget | None, folder: Path) -> Path | None:
     return Path(path) if path else None
 
 
+def open_image(parent: QWidget | None, folder: Path) -> Path | None:
+    path, _ = QFileDialog.getOpenFileName(
+        parent, "Import Background Image", str(folder), "Images (*.png *.jpg *.jpeg *.webp)"
+    )
+    return Path(path) if path else None
+
+
 def save_file(parent: QWidget | None, title: str, suggested: Path) -> Path | None:
     path, _ = QFileDialog.getSaveFileName(
         parent,
