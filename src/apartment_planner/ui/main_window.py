@@ -55,7 +55,6 @@ from apartment_planner.ui.theme import DARK_KEY, apply_theme, saved_dark
 
 APP_NAME = "Apartment Planner"
 GEOMETRY_KEY = "window/geometry"
-DUPLICATE_OFFSET = (50.0, 50.0)  # cm, so a duplicated room doesn't hide its original
 MESSAGE_MS = 8000
 
 

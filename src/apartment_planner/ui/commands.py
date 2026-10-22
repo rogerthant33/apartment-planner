@@ -29,7 +29,7 @@ from apartment_planner.state.placed import (
     rotate_placed,
     selected_placed,
 )
-from apartment_planner.state.rooms import duplicate_room, selected_room
+from apartment_planner.state.rooms import copy_rooms, selected_rooms
 
 DUPLICATE_OFFSET = (50.0, 50.0)  # cm, so a copy doesn't hide its original
 
@@ -125,28 +125,30 @@ class Commands:
                 select=lambda copies: copies,
             )
             return
-        room = selected_room(state.doc, state.selection)
-        if room is not None and self.view.can_edit_rooms():
+        rooms = selected_rooms(state.doc, state.selection)
+        if rooms and self.view.can_edit_rooms():
             self.create(
-                lambda doc: duplicate_room(doc, room.id, DUPLICATE_OFFSET),
-                select=lambda copy_id: {copy_id},
+                lambda doc: copy_rooms(doc, rooms, doc.apartment.openings, DUPLICATE_OFFSET),
+                select=lambda copies: copies,
             )
         elif state.selection and not self.view.can_edit_rooms():
             self.view.notify("The apartment is locked. Unlock it to duplicate rooms or obstacles.")
+        else:
+            self.view.notify("Select furniture, obstacles or rooms to duplicate them.")
 
     def copy(self) -> Clip | None:
         """Put copies of the selection on the clipboard, and return them."""
         state = self.state
         clip = copy_selection(state.doc, state.selection) if state is not None else None
-        if state is None or clip is None:
+        if clip is None:
             self.view.notify("Select furniture, obstacles or rooms to copy them.")
             return None
         self.clip, self._paste_step = clip, 1
         return clip
 
     def cut(self) -> None:
-        clip, state = self.copy(), self.state
-        if clip is None or state is None:
+        clip = self.copy()
+        if clip is None:
             return
         if clip.is_apartment and not self.view.can_edit_rooms():
             self.view.notify("They were copied but not cut: unlock the apartment to cut them.")
@@ -163,8 +165,8 @@ class Commands:
             return
         step = self._paste_step
         offset = (DUPLICATE_OFFSET[0] * step, DUPLICATE_OFFSET[1] * step)
-        self.create(lambda doc: paste(doc, clip, offset), select=lambda pasted: pasted)
-        self._paste_step += 1
+        if self.create(lambda doc: paste(doc, clip, offset), select=lambda pasted: pasted):
+            self._paste_step += 1
 
     def select_all(self) -> None:
         state = self.state
