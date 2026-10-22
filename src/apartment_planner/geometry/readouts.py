@@ -63,6 +63,8 @@ def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | 
         # `_ray_hit` finds no hit on it anyway.
         if dx * -(b[1] - a[1]) + dy * (b[0] - a[0]) >= 0:  # pragma: no mutate
             continue  # moving along or away from this wall's inside face
+        if not _reaches_inside(corners, a, b):
+            continue  # e.g. a neighbouring room's side of a shared wall
         for corner in corners:
             t = _ray_hit(corner, direction, a, b)
             if t is not None:
@@ -73,6 +75,15 @@ def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | 
             if t:  # skip None (a miss) and 0 (the wall corner only touches the outline)
                 hits.append((t, ((end[0] - dx * t, end[1] - dy * t), end)))
     return min(hits, key=lambda hit: hit[0])[1] if hits else None
+
+
+def _reaches_inside(corners: list[XY], a: XY, b: XY) -> bool:
+    """True if some corner is on the inside (right-hand) side of the wall a-b, not
+    just on it or beyond it."""
+    nx, ny = -(b[1] - a[1]), b[0] - a[0]
+    # The tolerance absorbs rounding for corners on the wall; `>=` would differ only
+    # for a corner exactly 1e-9 off it.
+    return any((c[0] - a[0]) * nx + (c[1] - a[1]) * ny > 1e-9 for c in corners)  # pragma: no mutate
 
 
 def _ray_hit(origin: XY, direction: XY, a: XY, b: XY) -> float | None:

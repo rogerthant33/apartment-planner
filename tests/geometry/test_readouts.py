@@ -156,3 +156,13 @@ def test_gap_between_two_items(x: float, expected: float) -> None:
     gap = gap_between(rect_item(100, 100, x=50, y=50), rect_item(100, 100, x=x, y=50))
 
     assert length(gap) == expected
+
+
+def test_a_wall_shared_with_a_neighbouring_room_does_not_stop_a_slide_away_from_it() -> None:
+    neighbour, room = rect_room(-200, 0, 200, 300), rect_room(0, 0, 400, 300)
+    desk = rect_item(100, 50, x=50, y=150)  # flush against the shared wall at x=0
+
+    gaps = wall_gaps(desk, [neighbour, room])
+
+    assert length(gaps["right"]) == 300
+    assert length(gaps["left"]) == 0
