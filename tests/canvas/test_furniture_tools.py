@@ -62,14 +62,15 @@ def position(view: PlanView, item_id: str) -> XY:
     return (item.x, item.y)
 
 
-def test_click_selects_and_shift_click_toggles(view: PlanView) -> None:
+@pytest.mark.parametrize("modifier", ["shift", "ctrl"])
+def test_click_selects_and_shift_or_ctrl_click_toggles(view: PlanView, modifier: str) -> None:
     sofa, table = ids(view)
 
     drag(view, (200, 100))
     assert view.state.selection == {sofa}
-    drag(view, (200, 230), shift=True)
+    drag(view, (200, 230), **{modifier: True})
     assert view.state.selection == {sofa, table}
-    drag(view, (200, 100), shift=True)
+    drag(view, (200, 100), **{modifier: True})
     assert view.state.selection == {table}
 
 

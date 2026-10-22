@@ -129,3 +129,30 @@ def snap_move(
         gx, gy = snap_to_grid((anchor[0] + dx, anchor[1] + dy), grid)
         return (gx - anchor[0], gy - anchor[1])
     return delta
+
+
+def snap_room_move(
+    corners: Sequence[XY],
+    delta: XY,
+    targets: SnapTargets,
+    *,
+    grid: float | None,
+    tolerance: float,
+) -> XY:
+    """Adjust a move by `delta` of rooms with these `corners`.
+
+    A moved corner within `tolerance` of another room's corner lands on it;
+    otherwise the rooms move flush against the nearest edge in reach, or else
+    the first corner lands on the grid.
+    """
+    dx, dy = delta
+    best: tuple[float, XY] | None = None
+    for x, y in corners:
+        moved = (x + dx, y + dy)
+        for vertex in targets.vertices:
+            distance = math.dist(moved, vertex)
+            if distance <= tolerance and (best is None or distance < best[0]):
+                best = (distance, (vertex[0] - moved[0], vertex[1] - moved[1]))
+    if best is not None:
+        return (dx + best[1][0], dy + best[1][1])
+    return snap_move(corners, corners[0], delta, targets.edges, grid=grid, tolerance=tolerance)

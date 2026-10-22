@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc
+from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
@@ -219,9 +219,9 @@ class SelectionPage(QWidget):
         layout.addStretch()
 
     def show_items(self, items: list[Placed], editable: bool) -> None:
-        names = ", ".join(item.name for item in items[:5])
-        more = f" and {len(items) - 5} more" if len(items) > 5 else ""
-        self.summary.setText(f"{len(items)} items selected: {names}{more}.")
+        self.summary.setText(_summary(len(items), "items", [item.name for item in items]))
+        for button in self.buttons.values():
+            button.setVisible(True)
         furniture = [i for i in items if isinstance(i, FurnitureItem)]  # obstacles: none
         grouped = {item.group_id for item in furniture}
         self.buttons["Group"].setEnabled(
@@ -232,3 +232,18 @@ class SelectionPage(QWidget):
         self.buttons["Unlock"].setEnabled(editable and any(i.locked for i in furniture))
         for label in ("Duplicate", "Delete"):
             self.buttons[label].setEnabled(editable)
+
+    def show_rooms(self, rooms: list[Room], editable: bool) -> None:
+        """Several rooms: drag one to move them all; they can be deleted together."""
+        self.summary.setText(
+            _summary(len(rooms), "rooms", [r.name for r in rooms]) + " Drag one to move them all."
+        )
+        for label, button in self.buttons.items():
+            button.setVisible(label == "Delete")
+        self.buttons["Delete"].setEnabled(editable)
+
+
+def _summary(count: int, what: str, names: list[str]) -> str:
+    listed = ", ".join(names[:5])
+    more = f" and {count - 5} more" if count > 5 else ""
+    return f"{count} {what} selected: {listed}{more}."

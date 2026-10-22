@@ -32,6 +32,7 @@ from apartment_planner.geometry.snapping import (
     room_targets,
     snap,
     snap_move,
+    snap_room_move,
 )
 from apartment_planner.geometry.transform import XY, local_to_world_all, world_to_local
 from apartment_planner.model import (
@@ -66,11 +67,13 @@ from apartment_planner.state.rooms import (
     add_room,
     drawn_outline,
     insert_vertex,
+    move_rooms,
     move_vertex,
     moved_vertices,
     outline_problem,
     room,
     selected_room,
+    selected_rooms,
 )
 from apartment_planner.state.units import Unit, format_length
 
@@ -82,6 +85,12 @@ class Pointer:
     snapping: bool  # snapping is on and Alt isn't held
     alt: bool = False
     shift: bool = False
+    ctrl: bool = False  # Cmd on macOS
+
+    @property
+    def adds(self) -> bool:
+        """Shift or Ctrl: add to (or take from) the selection instead of replacing it."""
+        return self.shift or self.ctrl
 
 
 class Host(Protocol):
@@ -182,7 +191,7 @@ class Tool:
 
 @dataclass
 class _Drag:
-    kind: str  # "room_vertex", "move", "resize", "rotate", "corner" or "band"
+    kind: str  # "room_vertex", "rooms", "move", "resize", "rotate", "corner" or "band"
     start: XY
     ids: frozenset[str] = frozenset()
     room_id: str = ""
@@ -238,13 +247,25 @@ class SelectTool(Tool):
         if hit is not None:
             self._press_placed(hit, pointer)
             return
-        room_id = None if doc.settings.apartment_locked else room_at(doc.apartment.rooms, pos)
+        room_id = room_at(doc.apartment.rooms, pos) if self.can_edit_rooms() else None
         if room_id is not None:
-            state.select({room_id})
+            self._press_room(room_id, pointer)
             return
-        if not pointer.shift:
+        if not pointer.adds:
             state.select(())
         self._drag = _Drag("band", pos)
+
+    def _press_room(self, room_id: str, pointer: Pointer) -> None:
+        """Select a room (Shift or Ctrl adds rooms) and start moving the selected rooms."""
+        state = self.host.state
+        rooms = frozenset(r.id for r in selected_rooms(self.doc, state.selection))
+        if pointer.adds:
+            state.select(rooms - {room_id} if room_id in rooms else rooms | {room_id})
+            return
+        if room_id not in rooms:
+            rooms = frozenset({room_id})
+            state.select(rooms)
+        self._drag = _Drag("rooms", pointer.pos, ids=rooms)
 
     def _reshapeable(self, item: Placed) -> bool:
         if isinstance(item, FurnitureItem):
@@ -264,7 +285,7 @@ class SelectTool(Tool):
             for i in selected_placed(doc, state.selection)
             if is_obstacle(doc, i.id) == obstacle
         )
-        if pointer.shift:
+        if pointer.adds:
             state.select(selected - group if hit in selected else selected | group)
             return
         if hit not in selected:
@@ -290,6 +311,8 @@ class SelectTool(Tool):
             )
         elif drag.kind == "move":
             self._move_preview(drag, pointer)
+        elif drag.kind == "rooms":
+            self._rooms_preview(drag, pointer)
         elif drag.kind == "opening":
             self._opening_preview(drag, pointer)
         else:
@@ -311,6 +334,26 @@ class SelectTool(Tool):
         moved = opening_of(drag.result(), opening_id)
         span = opening_span(room(self.doc, moved.room_id), moved)
         self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
+
+    def _rooms_preview(self, drag: _Drag, pointer: Pointer) -> None:
+        delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
+        if drag.result is None and math.hypot(*delta) < style.DRAG_PX * pointer.cm_per_px:
+            return  # still a click: a little jitter mustn't move a room
+        rooms = selected_rooms(self.doc, drag.ids)
+        corners = [(v.x, v.y) for r in rooms for v in r.vertices]
+        if pointer.snapping:
+            others = [r for r in self.doc.apartment.rooms if r.id not in drag.ids]
+            delta = snap_room_move(
+                corners,
+                delta,
+                room_targets(others),
+                grid=self.doc.settings.grid_size,
+                tolerance=style.SNAP_PX * pointer.cm_per_px,
+            )
+        dx, dy = delta
+        outlines = [[(v.x + dx, v.y + dy) for v in r.vertices] for r in rooms]
+        drag.result = lambda: move_rooms(self.doc, drag.ids, delta)
+        self.host.plan.preview.show_outlines(outlines, closed=True, valid=True)
 
     def _move_preview(self, drag: _Drag, pointer: Pointer) -> None:
         items = selected_placed(self.doc, drag.ids)
@@ -377,7 +420,7 @@ class SelectTool(Tool):
         if drag.kind == "band":
             if drag.end is not None:
                 touched = placed_in_rect(self.visible_furniture(), drag.start, drag.end)
-                keep = self.host.state.selection if pointer.shift else frozenset()
+                keep = self.host.state.selection if pointer.adds else frozenset()
                 self.host.state.select(keep | with_groups(self.doc, touched))
             return
         if drag.result is None:  # a click, not a drag

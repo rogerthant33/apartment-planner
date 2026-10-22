@@ -314,8 +314,11 @@ class PlanView(QGraphicsView):
         scene = self.mapToScene(event.position().toPoint())
         alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)  # Cmd on macOS
         snapping = self.state.doc.settings.snap_enabled and not alt
-        return Pointer((scene.x(), scene.y()), 1 / self.zoom, snapping, alt=alt, shift=shift)
+        return Pointer(
+            (scene.x(), scene.y()), 1 / self.zoom, snapping, alt=alt, shift=shift, ctrl=ctrl
+        )
 
     # Grid
 

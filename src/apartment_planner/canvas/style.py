@@ -65,6 +65,7 @@ OUTLINE_PX = 2.0
 HANDLE_PX = 9
 ROTATE_PX = 28  # how far beyond an item's top edge its rotate handle sits
 SNAP_PX = 10  # how close on screen a vertex or edge must be to attract the cursor
+DRAG_PX = 4  # how far the pointer must move before a press on a room becomes a drag
 WALL_PX = 25  # how close to a wall a door or window lands on it
 CLOSE_PX = 10  # how close to the first point a click closes a polygon
 MIN_GRID_PX = 6  # grid lines closer than this on screen aren't drawn

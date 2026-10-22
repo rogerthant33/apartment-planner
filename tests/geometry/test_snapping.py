@@ -8,6 +8,7 @@ from apartment_planner.geometry.snapping import (
     room_targets,
     snap,
     snap_move,
+    snap_room_move,
 )
 from tests.factories import rect_item, rect_room
 
@@ -113,3 +114,24 @@ def test_placed_edges_follow_the_rotated_footprint() -> None:
 
     (start, end), *_ = placed_edges([sofa])
     assert (*start, *end) == pytest.approx((145, 0, 145, 200))
+
+
+NEIGHBOUR = room_targets([rect_room(400, 0, 300, 300)])  # x 400..700, y 0..300
+MOVING = [(0.0, 0.0), (200.0, 0.0), (200.0, 100.0), (0.0, 100.0)]
+
+
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        ((195, 3), (200, 0)),  # corner to corner beats flush along the edge
+        ((195, 50), (200, 50)),  # flush against the neighbour's left wall
+        ((189.9, 50), (190, 50)),  # just out of reach (10 cm): to the grid instead
+        ((-33, 47), (-30, 50)),
+    ],
+)
+def test_room_moves_snap_to_corners_then_walls_then_the_grid(
+    delta: tuple[float, float], expected: tuple[float, float]
+) -> None:
+    moved = snap_room_move(MOVING, delta, NEIGHBOUR, grid=10, tolerance=10)
+
+    assert moved == pytest.approx(expected)

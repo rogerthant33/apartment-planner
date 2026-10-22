@@ -6,12 +6,14 @@ from apartment_planner.model import (
     Apartment,
     Opening,
     ProjectDoc,
+    RectShape,
     Room,
     Vertex,
     new_id,
     new_project,
 )
 from apartment_planner.state.errors import EditError
+from apartment_planner.state.furniture import add_furniture, furniture_item
 from apartment_planner.state.rooms import (
     add_room,
     delete_room,
@@ -19,6 +21,7 @@ from apartment_planner.state.rooms import (
     delete_vertex,
     duplicate_room,
     insert_vertex,
+    move_rooms,
     move_vertex,
     outline_problem,
     recolour_room,
@@ -344,3 +347,23 @@ def test_delete_vertex_keeps_openings_in_place_on_a_sloping_wall() -> None:
     doc = delete_vertex(doc, r.id, r.vertices[2].id)
 
     assert only_opening(doc).offset == pytest.approx(0.75 * math.hypot(400, 200))
+
+
+def test_moving_rooms_takes_their_openings_and_reassigns_furniture() -> None:
+    doc, r = with_room()  # SQUARE
+    doc, other_id = add_room(doc, [(1000, 0), (1100, 0), (1100, 100), (1000, 100)])
+    doc = with_window(doc, r, edge=0, offset=100, width=80)
+    doc, sofa = add_furniture(doc, RectShape(width=20, depth=20), (50, 50), "Sofa")
+    before = room(doc, r.id)
+
+    moved = move_rooms(doc, {r.id}, (500, 10))
+
+    after = room(moved, r.id)
+    assert [
+        (v.x - w.x, v.y - w.y) for v, w in zip(after.vertices, before.vertices, strict=True)
+    ] == [(500, 10)] * len(before.vertices)
+    assert [v.id for v in after.vertices] == [v.id for v in before.vertices]
+    assert room(moved, other_id) == room(doc, other_id)
+    assert moved.apartment.openings == doc.apartment.openings  # they follow their vertices
+    assert furniture_item(doc, sofa).room_id == r.id
+    assert furniture_item(moved, sofa).room_id is None  # the room left it behind

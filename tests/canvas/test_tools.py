@@ -213,3 +213,39 @@ def test_delete_removes_the_selected_vertex_but_keeps_three(
     view.state.select({triangle.id})
     view.delete_selection()
     assert view.state.doc.apartment.rooms == ()
+
+
+NEIGHBOUR = [(600.0, 0.0), (900.0, 0.0), (900.0, 300.0), (600.0, 300.0)]
+
+
+def test_dragging_a_room_moves_it_once_and_snaps_it_against_another(view: PlanView) -> None:
+    first, _ = with_rooms(view, SQUARE, NEIGHBOUR)
+
+    drag(view.tools["select"], (200, 150), (300, 160), (393, 152))  # right wall 7 cm short
+
+    assert corners(room(view.state.doc, first.id))[1] == (600, 0)  # corner to corner
+    assert view.state.selection == {first.id}
+    view.state.undo()
+    assert corners(room(view.state.doc, first.id)) == SQUARE
+
+
+def test_a_click_with_a_little_jitter_does_not_move_a_room(view: PlanView) -> None:
+    (only,) = with_rooms(view, SQUARE)
+
+    drag(view.tools["select"], (200, 150), (203, 150), snapping=False)  # under 4 px
+
+    assert corners(room(view.state.doc, only.id)) == SQUARE
+
+
+def test_ctrl_click_adds_rooms_and_dragging_moves_them_together(view: PlanView) -> None:
+    first, second = with_rooms(view, SQUARE, NEIGHBOUR)
+    select = view.tools["select"]
+
+    select.press(Pointer((200, 150), cm_per_px=1.0, snapping=True))
+    select.release(Pointer((200, 150), cm_per_px=1.0, snapping=True))
+    select.press(Pointer((700, 150), cm_per_px=1.0, snapping=True, ctrl=True))
+    assert view.state.selection == {first.id, second.id}
+    drag(select, (700, 150), (700, 250), snapping=False)
+
+    assert corners(room(view.state.doc, first.id))[0] == (0, 100)
+    assert corners(room(view.state.doc, second.id))[0] == (600, 100)

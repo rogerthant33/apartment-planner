@@ -35,6 +35,7 @@ from apartment_planner.state.rooms import (
     recolour_room,
     rename_room,
     selected_room,
+    selected_rooms,
     set_edge_length,
 )
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
@@ -368,6 +369,7 @@ class PropertiesPanel(QStackedWidget):
         placed = selected_placed(doc, state.selection)
         openings = selected_openings(doc, state.selection)
         room = selected_room(doc, state.selection)
+        rooms = selected_rooms(doc, state.selection)
         # Obstacles and openings belong to the apartment, which may be locked.
         apartment = editable and not doc.settings.apartment_locked
         if placed and not isinstance(placed[0], FurnitureItem):
@@ -378,6 +380,9 @@ class PropertiesPanel(QStackedWidget):
         elif placed:
             self.furniture_page.show_item(state, placed[0], editable)
             self.setCurrentWidget(self.furniture_page)
+        elif len(rooms) > 1:
+            self.selection_page.show_rooms(rooms, editable and not doc.settings.apartment_locked)
+            self.setCurrentWidget(self.selection_page)
         elif openings:
             self.opening_page.show_opening(state, openings[0], apartment)
             self.setCurrentWidget(self.opening_page)

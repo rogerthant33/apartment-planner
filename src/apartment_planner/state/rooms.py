@@ -7,6 +7,7 @@ user, so the canvas can revert and say why.
 import math
 from collections.abc import Callable, Iterable, Sequence
 
+from apartment_planner.geometry.hits import room_at
 from apartment_planner.geometry.polygon import is_clockwise, signed_area, validate_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Point, ProjectDoc, Room, Vertex, new_id
@@ -132,6 +133,33 @@ def selected_room(doc: ProjectDoc, selection: frozenset[str]) -> Room | None:
         if candidate.id in selection or any(v.id in selection for v in candidate.vertices):
             return candidate
     return None
+
+
+def selected_rooms(doc: ProjectDoc, selection: Iterable[str]) -> list[Room]:
+    ids = set(selection)
+    return [r for r in doc.apartment.rooms if r.id in ids]
+
+
+def move_rooms(doc: ProjectDoc, ids: Iterable[str], delta: XY) -> ProjectDoc:
+    """Move whole rooms. Their openings go with them; furniture stays put but is
+    reassigned to whichever room it now stands in."""
+    ids, (dx, dy) = set(ids), delta
+    rooms = [
+        r.evolve(vertices=tuple(v.evolve(x=v.x + dx, y=v.y + dy) for v in r.vertices))
+        if r.id in ids
+        else r
+        for r in doc.apartment.rooms
+    ]
+    doc = _with_rooms(doc, rooms)
+    layouts = tuple(
+        layout.evolve(
+            furniture=tuple(
+                f.evolve(room_id=room_at(doc.apartment.rooms, (f.x, f.y))) for f in layout.furniture
+            )
+        )
+        for layout in doc.layouts
+    )
+    return doc.evolve(layouts=layouts)
 
 
 def delete_selection(doc: ProjectDoc, selection: frozenset[str]) -> ProjectDoc:
