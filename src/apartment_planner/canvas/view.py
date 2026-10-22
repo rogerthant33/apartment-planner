@@ -24,6 +24,7 @@ from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.canvas.tools import (
     BackgroundTool,
     CalibrateTool,
+    MeasureTool,
     OpeningTool,
     Pointer,
     PolygonTool,
@@ -71,6 +72,7 @@ class PlanView(QGraphicsView):
         self._pixmap: tuple[str, QPixmap] | None = None  # the shown image, decoded
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
+            "measure": MeasureTool(self),
             "rect": RectRoomTool(self),
             "polygon": PolygonTool(self, furniture=False),
             "shape": PolygonTool(self, furniture=True),
@@ -161,6 +163,7 @@ class PlanView(QGraphicsView):
                 findings=self.findings,
                 background=self.background_pixmap(),
             )
+            self.tool.redraw()
 
     @property
     def assets(self) -> Mapping[str, bytes]:

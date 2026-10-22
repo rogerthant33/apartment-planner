@@ -278,12 +278,27 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
 | V, M, P | Select tool, rectangle room tool, custom-shape room tool |
+| T | Measure tool |
 | D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |
 | Ctrl+E | Export plan |
 
 Shortcuts are ignored while a text field has focus.
+
+### Measuring
+
+The Measure tool (T, under Tools next to Select) measures the distance between
+two points: drag from one to the other, or click one and then the other. The
+line and its length stay on the plan until the next measurement starts, Escape,
+or another tool is picked, and the status bar shows the distance with its
+horizontal and vertical parts when it's on a slant ("250 cm (200 cm
+horizontal, 150 cm vertical)"). Each end snaps within 10 px to the corners and
+edges of rooms and of visible furniture and obstacles, but not to the grid;
+Alt (or snapping turned off in the project settings) measures freely. A click
+that doesn't move 4 px waits for the second point, and a second point on the
+first one is ignored. Zooming and other redraws keep the measurement shown. Measuring changes nothing: no undo step, nothing saved,
+and it works while the apartment is locked or the project is read-only.
 
 ## 7. Fit checking
 
@@ -600,8 +615,7 @@ collaboration; web or mobile versions; 3D; photorealistic models; floor-plan
 recognition; curved furniture geometry; retailer integrations; multiple
 storeys; wall thickness and construction-grade validation; vertical clearance.
 
-**Parked for later:** Plan/Furnish modes, measuring tape tool, furniture preset
-library, auto-update.
+**Parked for later:** Plan/Furnish modes, furniture preset library, auto-update.
 
 ## 15. Milestones
 

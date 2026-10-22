@@ -1,6 +1,12 @@
 import pytest
 
-from apartment_planner.state.units import Unit, format_area, format_length, parse_length
+from apartment_planner.state.units import (
+    Unit,
+    describe_distance,
+    format_area,
+    format_length,
+    parse_length,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,3 +50,19 @@ def test_parse_length_rejects_anything_else(text: str) -> None:
 
 def test_format_area_in_square_metres() -> None:
     assert format_area(1_234_567) == "123.46 m²"
+
+
+@pytest.mark.parametrize(
+    ("end", "unit", "text"),
+    [
+        ((300, 400), "cm", "500 cm (300 cm horizontal, 400 cm vertical)"),
+        ((-300, -400), "m", "5 m (3 m horizontal, 4 m vertical)"),
+        ((300, 0.06), "cm", "300 cm (300 cm horizontal, 0.1 cm vertical)"),
+        ((300, 0.04), "cm", "300 cm"),  # the vertical part rounds to nothing
+        ((0, -250), "cm", "250 cm"),
+    ],
+)
+def test_distances_give_their_parts_only_when_on_a_slant(
+    end: tuple[float, float], unit: Unit, text: str
+) -> None:
+    assert describe_distance((0, 0), end, unit) == text

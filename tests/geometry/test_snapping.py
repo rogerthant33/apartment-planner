@@ -3,8 +3,9 @@ import pytest
 from apartment_planner.geometry.snapping import (
     SnapKind,
     SnapTargets,
+    measure_targets,
     nearest_on_segment,
-    placed_edges,
+    placed_targets,
     room_targets,
     snap,
     snap_move,
@@ -131,11 +132,13 @@ def test_moves_into_a_corner_snap_flush_to_both_walls(
     assert result == pytest.approx(expected)
 
 
-def test_placed_edges_follow_the_rotated_footprint() -> None:
+def test_placed_targets_follow_the_rotated_footprint() -> None:
     sofa = rect_item(200, 90, x=100, y=100, rotation=90)
 
-    (start, end), *_ = placed_edges([sofa])
+    targets = placed_targets([sofa])
+    (start, end), *_ = targets.edges
     assert (*start, *end) == pytest.approx((145, 0, 145, 200))
+    assert targets.vertices[2] == pytest.approx((55, 200))
 
 
 NEIGHBOUR = room_targets([rect_room(400, 0, 300, 300)])  # x 400..700, y 0..300
@@ -176,3 +179,12 @@ def test_a_degenerate_edge_is_snapped_to_as_a_point_with_no_slide() -> None:
     shift = snap_move(SOFA_CORNERS, SOFA_ORIGIN, (0, 0), [point], grid=None, tolerance=5)
 
     assert shift == pytest.approx((-3, -2))  # the sofa's corner (13, 102) onto the point
+
+
+def test_measurements_snap_to_rooms_and_furniture_alike() -> None:
+    table = rect_item(40, 40, x=500, y=500)
+
+    targets = measure_targets([rect_room(0, 0, 100, 100)], [table])
+
+    assert targets.vertices[3:5] == pytest.approx([(0, 100), (480, 480)])
+    assert len(targets.edges) == 8

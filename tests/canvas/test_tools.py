@@ -336,3 +336,20 @@ def test_the_first_corner_is_marked_and_fills_when_a_click_would_close(view: Pla
     marker = view.plan.preview.start_marker
     assert marker is not None and marker.brush().color() == style.colours.accent
     assert view.plan.preview.label_texts == ["300 cm", "200 cm", "360.6 cm"]  # closed
+
+
+def test_measuring_by_two_clicks_and_clearing_it(view: PlanView, messages: list[str]) -> None:
+    with_rooms(view, SQUARE)
+    view.set_tool("measure")
+
+    drag(view.tool, (6, 3))  # a click 6 px from a corner: snaps there and waits
+    drag(view.tool, (2, 1))  # a second click on the same corner: still waiting
+    assert messages[-1] == view.tool.hint
+    view.tool.press(at(397, 6))  # the next corner
+    assert messages[-1] == "Distance: 400 cm"
+    view.tool.move(at(200, 200))  # the measurement stays put, through redraws too
+    view.zoom_to_fit()
+    assert view.plan.preview.label_texts == ["400 cm"]
+    view.tool.key(Qt.Key.Key_Escape)
+
+    assert view.plan.preview.label_texts == []

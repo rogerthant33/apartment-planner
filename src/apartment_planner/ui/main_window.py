@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         self._create_actions()
         tool = self.tool_action
         self.tools = ToolsPanel(
-            [tool["select"], tool["rect"], tool["polygon"]],
+            [tool["select"], tool["measure"], tool["rect"], tool["polygon"]],
             [*self.opening_tool_actions, *self.obstacle_actions],
             [*self.add_actions, tool["shape"]],
             self.layout_actions,
@@ -547,6 +547,7 @@ class MainWindow(QMainWindow):
         for action in self.obstacle_actions:
             action.setEnabled(rooms)
         self.tool_action["select"].setEnabled(state is not None)
+        self.tool_action["measure"].setEnabled(state is not None)  # it changes nothing
         self.tool_action["shape"].setEnabled(editable)
         has_image = state is not None and state.doc.background is not None
         for action in self.image_tool_actions:
@@ -635,6 +636,7 @@ class MainWindow(QMainWindow):
         self.tool_action: dict[str, QAction] = {}
         for name, text, key, tip in (
             ("select", "Select", "V", "Select and move things (V)"),
+            ("measure", "Measure", "T", "Measure the distance between two points (T)"),
             ("rect", "Rectangle Room", "M", "Drag out a rectangular room (M)"),
             ("polygon", "Custom Shape", "P", "Draw a room of any shape: click its corners (P)"),
             ("shape", "Custom Shape", None, "Draw furniture of any shape: click its corners"),
