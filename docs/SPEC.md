@@ -42,7 +42,7 @@ obstacles, then try out several furniture layouts and check what fits.
 | Data model / validation | pydantic v2 |
 | Tests | pytest, hypothesis (geometry properties), pytest-qt (UI) |
 | Lint / format / types | ruff, mypy (strict, pydantic plugin) |
-| Packaging | PyInstaller, one build per OS (milestone 7) |
+| Packaging | PyInstaller, one-folder build per OS (`packaging/build.py`); macOS gets an `.app` |
 
 ## 3. Interface
 

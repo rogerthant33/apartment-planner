@@ -11,6 +11,19 @@ Needs [uv](https://docs.astral.sh/uv/) (it installs the right Python itself).
 uv run apartment-planner
 ```
 
+## Packaged build
+
+Build on the platform you want the app for (PyInstaller can't cross-build):
+
+```
+uv run python packaging/build.py
+```
+
+The app lands in `dist/Apartment Planner/` (on macOS also
+`dist/Apartment Planner.app`). Copy that folder anywhere; it needs nothing
+else installed. macOS will ask for confirmation the first time, as the build
+isn't signed.
+
 ## Development
 
 ```

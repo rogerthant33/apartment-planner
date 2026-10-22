@@ -19,6 +19,7 @@ hard-coded separators, and no OS-specific shell in tooling.
 - `uv run pytest`: run all tests (Qt tests run with the offscreen platform)
 - `uv run mypy`: type-check
 - `uv run ruff check` / `uv run ruff format`: lint / format
+- `uv run python packaging/build.py`: packaged build for this OS, into `dist/`
 - `uv add <pkg>` / `uv add --dev <pkg>`: add dependencies (never pip install)
 
 Before calling work done, run `uv run ruff check`, `uv run mypy` and
