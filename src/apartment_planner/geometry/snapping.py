@@ -111,15 +111,26 @@ def snap_move(
     """Adjust a move by `delta` of an outline with these `corners`.
 
     If a moved corner comes within `tolerance` of an edge (a wall or another
-    item), the outline moves flush against the nearest such edge. Otherwise
-    `anchor` (the item's origin) lands on the grid, when there is one.
+    item), the outline moves flush against the nearest such edge, and then slides
+    along it onto a second edge within `tolerance`, if there is one: into a corner
+    of the room, say. Otherwise `anchor` (the item's origin) lands on the grid, when
+    there is one.
     """
     dx, dy = delta
-    shift = _closest_shift(
-        corners, delta, lambda moved: (nearest_on_segment(moved, a, b) for a, b in edges), tolerance
-    )
-    if shift is not None:
-        return (dx + shift[0], dy + shift[1])
+    best: tuple[float, XY, tuple[XY, XY]] | None = None
+    for x, y in corners:
+        moved = (x + dx, y + dy)
+        for a, b in edges:
+            target = nearest_on_segment(moved, a, b)
+            distance = math.dist(moved, target)
+            if distance <= tolerance and (best is None or distance < best[0]):
+                best = (distance, (target[0] - moved[0], target[1] - moved[1]), (a, b))
+    if best is not None:
+        _, (sx, sy), (a, b) = best
+        flush = (dx + sx, dy + sy)
+        along = _unit(a, b)
+        slide = _slide_onto(corners, flush, along, edges, tolerance)
+        return (flush[0] + along[0] * slide, flush[1] + along[1] * slide)
     if grid is not None:
         gx, gy = snap_to_grid((anchor[0] + dx, anchor[1] + dy), grid)
         return (gx - anchor[0], gy - anchor[1])
@@ -164,3 +175,31 @@ def _closest_shift(
             if distance <= tolerance and (best is None or distance < best[0]):
                 best = (distance, (target[0] - moved[0], target[1] - moved[1]))
     return None if best is None else best[1]
+
+
+def _unit(a: XY, b: XY) -> XY:
+    length = math.dist(a, b)
+    return ((b[0] - a[0]) / length, (b[1] - a[1]) / length)
+
+
+def _slide_onto(
+    corners: Sequence[XY], delta: XY, along: XY, edges: Sequence[tuple[XY, XY]], tolerance: float
+) -> float:
+    """How far (either way along `along`, within `tolerance`) to slide the moved
+    corners so one lands on an edge that crosses that direction; 0 if none is in
+    reach. The shortest slide wins; the first found wins a tie."""
+    ux, uy = along
+    best: float | None = None
+    for x, y in corners:
+        px, py = x + delta[0], y + delta[1]
+        for (ax, ay), (bx, by) in edges:
+            ex, ey = bx - ax, by - ay
+            denominator = ux * ey - uy * ex
+            if math.isclose(denominator, 0.0, abs_tol=1e-12):
+                continue  # parallel to the slide: the edge it's flush against, say
+            ox, oy = ax - px, ay - py
+            t = (ox * ey - oy * ex) / denominator
+            s = (ox * uy - oy * ux) / denominator
+            if 0 <= s <= 1 and abs(t) <= tolerance and (best is None or abs(t) < abs(best)):
+                best = t
+    return 0.0 if best is None else best
