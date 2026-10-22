@@ -40,8 +40,9 @@ class FindingsPanel(QWidget):
         self.list.clear()
         for finding in findings:
             row = QListWidgetItem(f"{PREFIX[finding.severity]}: {finding.message}")
-            color = style.INVALID if finding.severity == "collision" else style.WARNING
-            row.setForeground(QBrush(color if style.is_dark() else color.darker(130)))
+            colours = style.colours
+            collision = finding.severity == "collision"
+            row.setForeground(QBrush(colours.collision_text if collision else colours.warning_text))
             row.setData(IDS, finding.ids)
             self.list.addItem(row)
 

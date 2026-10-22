@@ -146,7 +146,7 @@ def _draw(
         scene.preview.hide()
         scene.render(painter, target, source, Qt.AspectRatioMode.KeepAspectRatio)
         band = BAND_HEIGHT
-        painter.setPen(style.LABEL)
+        painter.setPen(style.colours.label)
         painter.setFont(_title_font())
         painter.drawText(
             QRectF(target.left() + band / 3, target.top() - band, target.width(), band),
@@ -157,7 +157,7 @@ def _draw(
         left = target.left() + band / 3
         y = target.bottom() + band / 2
         right = left + length * per_cm
-        painter.setPen(QPen(style.ROOM_OUTLINE, 1.5))
+        painter.setPen(QPen(style.colours.room_outline, 1.5))
         painter.drawLine(QPointF(left, y), QPointF(right, y))
         for x in (left, right):
             painter.drawLine(QPointF(x, y - 4), QPointF(x, y + 4))

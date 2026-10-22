@@ -333,14 +333,14 @@ class PlanView(QGraphicsView):
 
     def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
         rect = QRectF(rect)
-        painter.fillRect(rect, style.BACKGROUND)
+        painter.fillRect(rect, style.colours.background)
         minor = self.plan.grid_size
         major = minor * 10
         while major * self.zoom < style.MIN_GRID_PX:
             major *= 10
         if minor * self.zoom >= style.MIN_GRID_PX:
-            self._draw_grid(painter, rect, minor, style.GRID_MINOR)
-        self._draw_grid(painter, rect, major, style.GRID_MAJOR)
+            self._draw_grid(painter, rect, minor, style.colours.grid_minor)
+        self._draw_grid(painter, rect, major, style.colours.grid_major)
 
     @staticmethod
     def _draw_grid(painter: QPainter, rect: QRectF, step: float, color: QColor) -> None:

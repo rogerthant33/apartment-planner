@@ -60,7 +60,7 @@ def flag_color(flag: Severity | None, default: QColor) -> QColor:
     """Collisions are red and warnings amber (docs/SPEC.md §7)."""
     if flag is None:
         return default
-    return style.INVALID if flag == "collision" else style.WARNING
+    return style.colours.invalid if flag == "collision" else style.colours.warning
 
 
 def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
@@ -105,10 +105,10 @@ class TextLabel(QGraphicsItem):
         widget: QWidget | None = None,
     ) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(style.LABEL_BACKGROUND)
+        painter.setBrush(style.colours.label_background)
         painter.drawRoundedRect(self._rect, 2, 2)
         painter.setFont(self._font)
-        painter.setPen(style.LABEL)
+        painter.setPen(style.colours.label)
         painter.drawText(self._text_rect, Qt.AlignmentFlag.AlignCenter, self.text)
 
 
@@ -120,8 +120,8 @@ class HandleItem(QGraphicsRectItem):
         super().__init__(-half, -half, style.HANDLE_PX, style.HANDLE_PX, parent)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(style.ACCENT if selected else style.HANDLE_FILL)
+        self.setPen(cosmetic_pen(style.colours.accent, 1.5))
+        self.setBrush(style.colours.accent if selected else style.colours.handle_fill)
         self.setZValue(2)
 
 
@@ -141,9 +141,9 @@ class RoomItem(QGraphicsPolygonItem):
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
         self.flag = flag
-        outline = style.ACCENT if selected else flag_color(flag, style.ROOM_OUTLINE)
+        outline = style.colours.accent if selected else flag_color(flag, style.colours.room_outline)
         self.setPen(cosmetic_pen(outline, style.OUTLINE_PX))
-        self.setBrush(QBrush(QColor(room.color) if room.color else style.ROOM_FILL))
+        self.setBrush(QBrush(QColor(room.color) if room.color else style.colours.room_fill))
 
         polygon = room_polygon(room)
         anchor = polygon.centroid
@@ -177,8 +177,8 @@ class RotateHandleItem(QGraphicsEllipseItem):
         super().__init__(-half, -half, style.HANDLE_PX, style.HANDLE_PX)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(style.HANDLE_FILL)
+        self.setPen(cosmetic_pen(style.colours.accent, 1.5))
+        self.setBrush(style.colours.handle_fill)
         self.setZValue(3)
 
 
@@ -212,15 +212,21 @@ class PlacedItem(QGraphicsPathItem):
         self.setRotation(item.rotation)
         locked = isinstance(item, FurnitureItem) and item.locked
         obstacle = isinstance(item, Obstacle)
-        outline = style.ACCENT if selected else flag_color(flag, style.FURNITURE_OUTLINE)
+        outline = (
+            style.colours.accent if selected else flag_color(flag, style.colours.furniture_outline)
+        )
         width = 1.5 if flag is None else 2.5
         self.setPen(cosmetic_pen(outline, width, dashed=locked))
         if obstacle:
             self.setBrush(
-                QBrush(QColor(item.color or style.OBSTACLE_HATCH), Qt.BrushStyle.BDiagPattern)
+                QBrush(
+                    QColor(item.color or style.colours.obstacle_hatch), Qt.BrushStyle.BDiagPattern
+                )
             )
         else:
-            self.setBrush(QBrush(QColor(item.color) if item.color else style.FURNITURE_FILL))
+            self.setBrush(
+                QBrush(QColor(item.color) if item.color else style.colours.furniture_fill)
+            )
         self.setZValue(0.5 if obstacle else 1)
         self.label = TextLabel(item.name + (" (locked)" if locked else ""), self)
         self.edge_labels: list[TextLabel] = []
@@ -258,7 +264,7 @@ class ClearanceItem(QGraphicsPathItem):
         path.addPolygon(QPolygonF([QPointF(x, y) for x, y in zone.exterior.coords]))
         self.setPath(path)
         self.setPen(Qt.PenStyle.NoPen)
-        self.setBrush(style.CLEARANCE_FILL)
+        self.setBrush(style.colours.clearance_fill)
         self.setZValue(0.3)
 
 
@@ -268,7 +274,7 @@ class ReadoutItem(QGraphicsLineItem):
     def __init__(self, segment: Segment, text: str) -> None:
         (ax, ay), (bx, by) = segment
         super().__init__(ax, ay, bx, by)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.0, dashed=True))
+        self.setPen(cosmetic_pen(style.colours.accent, 1.0, dashed=True))
         self.setZValue(9)
         self.label = TextLabel(text, self)
         self.label.setPos((ax + bx) / 2, (ay + by) / 2)
@@ -288,7 +294,7 @@ class OpeningItem(QGraphicsPathItem):
         self.opening_id = opening.id
         a, b = opening_span(room, opening)
         nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))
-        color = style.ACCENT if selected else style.ROOM_OUTLINE
+        color = style.colours.accent if selected else style.colours.room_outline
         self.setPen(cosmetic_pen(color, 1.5 if selected else 1.2))
         self.setZValue(0.8)
         path = QPainterPath()
@@ -309,7 +315,7 @@ class OpeningItem(QGraphicsPathItem):
                 path.lineTo(*point)
         self.setPath(path)
         gap = QGraphicsLineItem(a[0], a[1], b[0], b[1], self)
-        gap.setPen(cosmetic_pen(style.BACKGROUND, style.OUTLINE_PX + 2))
+        gap.setPen(cosmetic_pen(style.colours.background, style.OUTLINE_PX + 2))
         gap.setFlag(QGraphicsItem.GraphicsItemFlag.ItemStacksBehindParent)
 
 
@@ -349,7 +355,7 @@ class PreviewItem(QGraphicsPathItem):
                 if closed:
                     path.closeSubpath()
         self.valid = valid
-        color = style.ACCENT if valid else style.INVALID
+        color = style.colours.accent if valid else style.colours.invalid
         self.setPen(cosmetic_pen(color, style.OUTLINE_PX, dashed=True))
         fill = QColor(color)
         fill.setAlpha(40)

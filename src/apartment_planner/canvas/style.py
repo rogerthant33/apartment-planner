@@ -1,65 +1,78 @@
 """Colours and sizes for the plan: a technical drawing, light or dark
 (docs/SPEC.md §13).
 
-The colours are module attributes so items read the current theme when they're
-made; `use_theme` switches them, and the scene is then rebuilt.
+`colours` is the palette in use. Items read it when they're made; `use_theme`
+switches it, and the scene is then rebuilt.
 """
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from PySide6.QtGui import QColor
 
-LIGHT = {
-    "BACKGROUND": QColor("#f6f6f3"),
-    "GRID_MINOR": QColor("#e7e7e2"),
-    "GRID_MAJOR": QColor("#d3d3cc"),
-    "ROOM_FILL": QColor(232, 226, 212, 150),
-    "ROOM_OUTLINE": QColor("#2b2b2b"),
-    "LABEL": QColor("#3a3a3a"),
-    "LABEL_BACKGROUND": QColor(255, 255, 255, 170),
-    "FURNITURE_FILL": QColor(203, 196, 184, 210),
-    "FURNITURE_OUTLINE": QColor("#4a453d"),
-    "OBSTACLE_HATCH": QColor("#6d665b"),
-    "HANDLE_FILL": QColor("white"),
-    "ACCENT": QColor("#2f6fde"),
-    "INVALID": QColor("#d32f2f"),  # reserved for collisions and invalid edits
-    "WARNING": QColor("#d98a00"),  # fit-check warnings
-    "CLEARANCE_FILL": QColor(47, 111, 222, 28),
-}
-DARK = {
-    "BACKGROUND": QColor("#1e1f22"),
-    "GRID_MINOR": QColor("#2a2b2f"),
-    "GRID_MAJOR": QColor("#3a3c41"),
-    "ROOM_FILL": QColor(70, 66, 58, 150),
-    "ROOM_OUTLINE": QColor("#d8d8d2"),
-    "LABEL": QColor("#e2e2dc"),
-    "LABEL_BACKGROUND": QColor(30, 31, 34, 190),
-    "FURNITURE_FILL": QColor(104, 98, 88, 220),
-    "FURNITURE_OUTLINE": QColor("#cfc8bb"),
-    "OBSTACLE_HATCH": QColor("#a69f92"),
-    "HANDLE_FILL": QColor("#1e1f22"),
-    "ACCENT": QColor("#5b93f0"),
-    "INVALID": QColor("#ef5350"),
-    "WARNING": QColor("#f0a92a"),
-    "CLEARANCE_FILL": QColor(91, 147, 240, 36),
-}
 
-BACKGROUND = LIGHT["BACKGROUND"]
-GRID_MINOR = LIGHT["GRID_MINOR"]
-GRID_MAJOR = LIGHT["GRID_MAJOR"]
-ROOM_FILL = LIGHT["ROOM_FILL"]
-ROOM_OUTLINE = LIGHT["ROOM_OUTLINE"]
-LABEL = LIGHT["LABEL"]
-LABEL_BACKGROUND = LIGHT["LABEL_BACKGROUND"]
-FURNITURE_FILL = LIGHT["FURNITURE_FILL"]
-FURNITURE_OUTLINE = LIGHT["FURNITURE_OUTLINE"]
-OBSTACLE_HATCH = LIGHT["OBSTACLE_HATCH"]
-HANDLE_FILL = LIGHT["HANDLE_FILL"]
-ACCENT = LIGHT["ACCENT"]
-INVALID = LIGHT["INVALID"]
-WARNING = LIGHT["WARNING"]
-CLEARANCE_FILL = LIGHT["CLEARANCE_FILL"]
+@dataclass(frozen=True)
+class Palette:
+    background: QColor
+    grid_minor: QColor
+    grid_major: QColor
+    room_fill: QColor
+    room_outline: QColor
+    label: QColor
+    label_background: QColor
+    furniture_fill: QColor
+    furniture_outline: QColor
+    obstacle_hatch: QColor
+    handle_fill: QColor
+    accent: QColor
+    invalid: QColor  # reserved for collisions and invalid edits
+    warning: QColor  # fit-check warnings
+    clearance_fill: QColor
+    collision_text: QColor  # findings in the Fit Checks list
+    warning_text: QColor
+
+
+LIGHT = Palette(
+    background=QColor("#f6f6f3"),
+    grid_minor=QColor("#e7e7e2"),
+    grid_major=QColor("#d3d3cc"),
+    room_fill=QColor(232, 226, 212, 150),
+    room_outline=QColor("#2b2b2b"),
+    label=QColor("#3a3a3a"),
+    label_background=QColor(255, 255, 255, 170),
+    furniture_fill=QColor(203, 196, 184, 210),
+    furniture_outline=QColor("#4a453d"),
+    obstacle_hatch=QColor("#6d665b"),
+    handle_fill=QColor("white"),
+    accent=QColor("#2f6fde"),
+    invalid=QColor("#d32f2f"),
+    warning=QColor("#d98a00"),
+    clearance_fill=QColor(47, 111, 222, 28),
+    collision_text=QColor("#d32f2f").darker(130),
+    warning_text=QColor("#d98a00").darker(130),
+)
+DARK = Palette(
+    background=QColor("#1e1f22"),
+    grid_minor=QColor("#2a2b2f"),
+    grid_major=QColor("#3a3c41"),
+    room_fill=QColor(70, 66, 58, 150),
+    room_outline=QColor("#d8d8d2"),
+    label=QColor("#e2e2dc"),
+    label_background=QColor(30, 31, 34, 190),
+    furniture_fill=QColor(104, 98, 88, 220),
+    furniture_outline=QColor("#cfc8bb"),
+    obstacle_hatch=QColor("#a69f92"),
+    handle_fill=QColor("#1e1f22"),
+    accent=QColor("#5b93f0"),
+    invalid=QColor("#ef5350"),
+    warning=QColor("#f0a92a"),
+    clearance_fill=QColor(91, 147, 240, 36),
+    collision_text=QColor("#ef5350"),
+    warning_text=QColor("#f0a92a"),
+)
+
+colours = LIGHT
 
 OUTLINE_PX = 2.0
 HANDLE_PX = 9
@@ -72,17 +85,13 @@ MIN_GRID_PX = 6  # grid lines closer than this on screen aren't drawn
 DIMENSION_PX = 11.0  # how far split wall dimensions sit off the wall line
 
 
-_dark = False
-
-
 def is_dark() -> bool:
-    return _dark
+    return colours is DARK
 
 
 def use_theme(dark: bool) -> None:
-    global _dark
-    _dark = dark
-    globals().update(DARK if dark else LIGHT)
+    global colours
+    colours = DARK if dark else LIGHT
 
 
 @contextmanager
