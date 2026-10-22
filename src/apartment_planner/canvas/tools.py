@@ -257,14 +257,15 @@ class SelectTool(Tool):
         if hit is not None:
             self._press_placed(hit, pointer)
             return
-        locked = doc.settings.apartment_locked
-        room_id = None if locked else room_at(doc.apartment.rooms, pos)
-        if room_id is not None:
+        room_id = room_at(doc.apartment.rooms, pos)
+        if room_id is not None and not doc.settings.apartment_locked:
             self._press_room(room_id, pointer)
             return
         if not pointer.adds:
             state.select(())
-        self._drag = _Drag("band", pos)
+        # While the apartment is locked, a click in a room selects it (to see its
+        # measurements), and a drag selects furniture with a band as elsewhere.
+        self._drag = _Drag("band", pos, room_id=room_id or "")
 
     def _press_room(self, room_id: str, pointer: Pointer) -> None:
         """Select a room (Shift or Ctrl adds rooms) and start moving the selected rooms."""
@@ -430,10 +431,13 @@ class SelectTool(Tool):
         if drag is None:
             return
         if drag.kind == "band":
+            keep = self.host.state.selection if pointer.adds else frozenset()
             if drag.end is not None:
                 touched = placed_in_rect(self.visible_furniture(), drag.start, drag.end)
-                keep = self.host.state.selection if pointer.adds else frozenset()
                 self.host.state.select(keep | with_groups(self.doc, touched))
+            elif drag.room_id:
+                room_id = drag.room_id
+                self.host.state.select(keep - {room_id} if room_id in keep else keep | {room_id})
             return
         if drag.result is None:  # a click, not a drag
             return

@@ -173,4 +173,4 @@ def test_hidden_furniture_is_not_drawn_or_selectable(view: PlanView) -> None:
     drag(view, (200, 100))
 
     assert [item.item_id for item in view.plan.furniture] == [table]
-    assert view.state.selection == frozenset()
+    assert view.state.selection == {view.state.doc.apartment.rooms[0].id}  # the room under it

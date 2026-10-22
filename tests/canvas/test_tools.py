@@ -143,17 +143,28 @@ def test_double_click_on_an_edge_inserts_a_selected_vertex(view: PlanView) -> No
     assert view.state.selection == {edited.id, updated.vertices[1].id}
 
 
-def test_locked_apartment_cannot_be_selected_or_drawn(view: PlanView) -> None:
+def test_locked_apartment_rooms_are_selected_by_a_click_but_not_moved_or_drawn(
+    view: PlanView, messages: list[str]
+) -> None:
     (existing,) = with_rooms(view, SQUARE)
     doc = view.state.doc
     view.state.update_untracked(doc.evolve(settings=doc.settings.evolve(apartment_locked=True)))
 
-    view.tool.press(at(100, 100))
+    drag(view.tool, (100, 100))
+    assert view.state.selection == {existing.id}
+    view.delete_selection()
+    assert messages == ["The apartment is locked. Unlock it to delete rooms, doors or obstacles."]
+    shift_click = Pointer((100, 100), cm_per_px=1.0, snapping=True, shift=True)
+    view.tool.press(shift_click)
+    view.tool.release(shift_click)
+    assert view.state.selection == frozenset()  # Shift toggles it off again
+    drag(view.tool, (100, 100))
+    drag(view.tool, (100, 100), (150, 100))  # a drag is a band, not a move
+    assert view.state.selection == frozenset()
     view.set_tool("rect")
     drag(view.tool, (500, 0), (700, 200))
 
-    assert view.state.selection == frozenset()
-    assert [r.id for r in view.state.doc.apartment.rooms] == [existing.id]
+    assert view.state.doc.apartment.rooms == (existing,)
 
 
 def test_polygon_closes_on_its_first_corner(view: PlanView) -> None:

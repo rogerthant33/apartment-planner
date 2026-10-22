@@ -41,7 +41,7 @@ from apartment_planner.state.furniture import (
 )
 from apartment_planner.state.openings import selected_openings
 from apartment_planner.state.placed import selectable, selected_obstacles
-from apartment_planner.state.rooms import selected_room
+from apartment_planner.state.rooms import selected_room, selected_rooms
 from apartment_planner.state.units import parse_length
 from apartment_planner.ui import dialogs, icons
 from apartment_planner.ui.commands import Commands
@@ -334,7 +334,9 @@ class MainWindow(QMainWindow):
         if locked:
             if self.view.tool.needs_apartment:
                 self.set_tool("select")
-            state.select(f.id for f in selected_furniture(state.doc, state.selection))
+            # Furniture and rooms stay selected (rooms can be looked at, not changed).
+            rooms = {r.id for r in selected_rooms(state.doc, state.selection)}
+            state.select({f.id for f in selected_furniture(state.doc, state.selection)} | rooms)
 
     def shortcut(self, command: Callable[[], None]) -> Callable[[], None]:
         """`command`, except while a text field has focus (it gets the keys instead)."""
@@ -390,7 +392,7 @@ class MainWindow(QMainWindow):
             self.choose_layout(state.doc.layouts[-1].id)
 
     def _select_room(self, room_id: str) -> None:
-        if self.editor is not None and not self.editor.doc.settings.apartment_locked:
+        if self.editor is not None:
             self.editor.select({room_id})
 
     def export_plan(self) -> None:
