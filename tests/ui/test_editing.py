@@ -188,3 +188,12 @@ def test_duplicate_copies_every_selected_room_or_says_what_to_select(window: Mai
     assert window.statusBar().currentMessage() == (
         "Select furniture, obstacles or rooms to duplicate them."
     )
+
+
+def test_measure_tool_is_on_t_even_while_the_apartment_is_locked(window: MainWindow) -> None:
+    window.view.setFocus()
+
+    QTest.keyClick(window.view, Qt.Key.Key_T)
+
+    assert window.tool_action["measure"].isChecked()
+    assert window.view.tool is window.view.tools["measure"]

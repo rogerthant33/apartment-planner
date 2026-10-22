@@ -5,6 +5,7 @@ from apartment_planner.geometry.snapping import (
     SnapTargets,
     nearest_on_segment,
     placed_edges,
+    placed_targets,
     room_targets,
     snap,
     snap_move,
@@ -136,6 +137,7 @@ def test_placed_edges_follow_the_rotated_footprint() -> None:
 
     (start, end), *_ = placed_edges([sofa])
     assert (*start, *end) == pytest.approx((145, 0, 145, 200))
+    assert placed_targets([sofa]).vertices[2] == pytest.approx((55, 200))
 
 
 NEIGHBOUR = room_targets([rect_room(400, 0, 300, 300)])  # x 400..700, y 0..300

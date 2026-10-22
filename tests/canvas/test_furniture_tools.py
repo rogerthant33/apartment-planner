@@ -188,3 +188,16 @@ def test_locked_room_clicks_select_only_rooms_and_bands_only_furniture(view: Pla
     drag(view, (150, 200), (250, 260), shift=True)  # a Shift+band over the table
 
     assert view.state.selection == {table}
+
+
+def test_measuring_snaps_to_furniture_corners_and_changes_nothing(
+    view: PlanView, messages: list[str]
+) -> None:
+    before = view.state.doc  # the apartment is locked, which measuring doesn't mind
+    view.set_tool("measure")
+
+    drag(view, (104, 58), (200, 100), (297, 143))  # near the sofa's corners (100, 55), (300, 145)
+
+    assert view.plan.preview.label_texts == ["219.3 cm"]
+    assert messages[-1] == "Distance: 219.3 cm (200 cm horizontal, 90 cm vertical)"
+    assert view.state.doc is before and not view.state.can_undo

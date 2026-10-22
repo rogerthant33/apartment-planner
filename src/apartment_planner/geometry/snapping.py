@@ -93,11 +93,18 @@ def _nearest(point: XY, candidates: Iterable[XY]) -> XY | None:
 
 def placed_edges(items: Iterable[Placed]) -> list[tuple[XY, XY]]:
     """The footprint edges of furniture items or obstacles, for snapping against."""
+    return list(placed_targets(items).edges)
+
+
+def placed_targets(items: Iterable[Placed]) -> SnapTargets:
+    """The footprint corners and edges of furniture items or obstacles."""
+    vertices: list[XY] = []
     edges: list[tuple[XY, XY]] = []
     for item in items:
         corners = local_to_world_all(shape_outline(item.shape), (item.x, item.y), item.rotation)
+        vertices.extend(corners)
         edges.extend(zip(corners, [*corners[1:], corners[0]], strict=True))  # pragma: no mutate
-    return edges
+    return SnapTargets(tuple(vertices), tuple(edges))
 
 
 def snap_move(

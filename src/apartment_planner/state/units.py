@@ -1,5 +1,6 @@
 """Formatting and parsing lengths in the display unit. Values are always cm."""
 
+import math
 import re
 from typing import Literal
 
@@ -42,3 +43,14 @@ def parse_angle(text: str, label: str) -> float:
 
 def format_area(cm2: float) -> str:
     return f"{cm2 / 10_000:.2f} m²"
+
+
+def describe_distance(a: tuple[float, float], b: tuple[float, float], unit: Unit) -> str:
+    """The distance from `a` to `b`, with its horizontal and vertical parts when it's
+    on a slant: "250 cm (200 cm horizontal, 150 cm vertical)"."""
+    dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+    length = format_length(math.hypot(dx, dy), unit)
+    horizontal, vertical = format_length(dx, unit), format_length(dy, unit)
+    if format_length(0, unit) in (horizontal, vertical):
+        return length
+    return f"{length} ({horizontal} horizontal, {vertical} vertical)"
