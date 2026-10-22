@@ -163,6 +163,7 @@ class PlanView(QGraphicsView):
                 findings=self.findings,
                 background=self.background_pixmap(),
             )
+            self.tool.redraw()
 
     @property
     def assets(self) -> Mapping[str, bytes]:

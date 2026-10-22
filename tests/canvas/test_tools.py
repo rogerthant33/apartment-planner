@@ -341,16 +341,15 @@ def test_the_first_corner_is_marked_and_fills_when_a_click_would_close(view: Pla
 def test_measuring_by_two_clicks_and_clearing_it(view: PlanView, messages: list[str]) -> None:
     with_rooms(view, SQUARE)
     view.set_tool("measure")
-    free = {"snapping": False}
 
-    drag(view.tool, (10, 10), **free)  # a click: waits for the second point
-    view.tool.move(at(13, 10, **free))
-    view.tool.press(at(10, 110, **free))
-    assert messages[-1] == "Distance: 100 cm"
-    view.tool.move(at(10, 200, **free))  # the measurement stays put
-    assert view.plan.preview.label_texts == ["100 cm"]
-    drag(view.tool, (3, 296), (397, 298))  # a new one, snapped to the room's corners
+    drag(view.tool, (6, 3))  # a click 6 px from a corner: snaps there and waits
+    drag(view.tool, (2, 1))  # a second click on the same corner: still waiting
+    assert messages[-1] == view.tool.hint
+    view.tool.press(at(397, 6))  # the next corner
     assert messages[-1] == "Distance: 400 cm"
+    view.tool.move(at(200, 200))  # the measurement stays put, through redraws too
+    view.zoom_to_fit()
+    assert view.plan.preview.label_texts == ["400 cm"]
     view.tool.key(Qt.Key.Key_Escape)
 
     assert view.plan.preview.label_texts == []

@@ -30,7 +30,7 @@ from apartment_planner.geometry.openings import nearest_edge, opening_at, openin
 from apartment_planner.geometry.shapes import shape_outline
 from apartment_planner.geometry.snapping import (
     SnapTargets,
-    placed_edges,
+    measure_targets,
     placed_targets,
     room_targets,
     snap,
@@ -163,6 +163,15 @@ class Tool:
 
     def cancel(self) -> None:
         self.host.plan.preview.clear()
+
+    def redraw(self) -> None:
+        """Show again what the tool shows after the scene was rebuilt (which clears
+        the preview), for tools whose preview outlasts a gesture."""
+
+    def show_line(self, a: XY, b: XY) -> None:
+        """A dashed line from `a` to `b` with its length."""
+        labels = segment_labels([a, b], self.doc.settings.display_unit, closed=False)
+        self.host.plan.preview.show_outline([a, b], closed=False, valid=True, labels=labels)
 
     @property
     def doc(self) -> ProjectDoc:
@@ -323,7 +332,7 @@ class SelectTool(Tool):
             return
         preview = self.host.plan.preview
         if drag.kind == "band":
-            if drag.end is None and _still_a_click(drag, pointer):
+            if drag.end is None and _still_a_click(drag.start, pointer):
                 return  # which in a locked room selects the room
             drag.end = pointer.pos
             preview.show_outline(rect_outline(drag.start, pointer.pos), closed=True, valid=True)
@@ -361,7 +370,7 @@ class SelectTool(Tool):
         self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
 
     def _rooms_preview(self, drag: _Drag, pointer: Pointer) -> None:
-        if drag.result is None and _still_a_click(drag, pointer):
+        if drag.result is None and _still_a_click(drag.start, pointer):
             return  # a little jitter mustn't move a room
         delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
         rooms = selected_rooms(self.doc, drag.ids)
@@ -395,7 +404,7 @@ class SelectTool(Tool):
                 corners,
                 (items[0].x, items[0].y),
                 delta,
-                [*rooms, *placed_edges(others)],
+                [*rooms, *placed_targets(others).edges],
                 grid=self.doc.settings.grid_size,
                 tolerance=style.MOVE_SNAP_PX * pointer.cm_per_px,
             )
@@ -596,9 +605,7 @@ class CalibrateTool(Tool):
 
     def move(self, pointer: Pointer) -> None:
         if self._first is not None:
-            line = [self._first, pointer.pos]
-            labels = segment_labels(line, self.doc.settings.display_unit, closed=False)
-            self.host.plan.preview.show_outline(line, closed=False, valid=True, labels=labels)
+            self.show_line(self._first, pointer.pos)
 
     def key(self, key: int) -> bool:
         if key == Qt.Key.Key_Escape and self._first is not None:
@@ -626,30 +633,30 @@ class MeasureTool(Tool):
         super().__init__(host)
         self._start: XY | None = None
         self._end: XY | None = None
+        self._pressed: XY = (0.0, 0.0)  # where the pointer went down, before snapping
+        self._targets = SnapTargets()  # taken at the first press; measuring changes nothing
         self._done = False  # the measurement is finished and stays shown
 
     def press(self, pointer: Pointer) -> None:
-        point = self._snapped(pointer)
+        self._pressed = pointer.pos
         if self._start is None or self._done:
-            self._start, self._end, self._done = point, point, False
-            self._show()
+            items = [*self.visible_furniture(), *self.visible_obstacles()]
+            self._targets = measure_targets(self.doc.apartment.rooms, items)
+            self._start = self._end = self._snapped(pointer)
+            self._done = False
+            self.redraw()
         else:  # the second click of click-and-click
-            self._end = point
-            self._finish()
+            self._finish(self._snapped(pointer))
 
     def move(self, pointer: Pointer) -> None:
         if self._start is not None and not self._done:
             self._end = self._snapped(pointer)
-            self._show()
+            self.redraw()
 
     def release(self, pointer: Pointer) -> None:
-        start = self._start
-        if start is None or self._done:
-            return
-        moved = math.dist(pointer.pos, start) >= style.DRAG_PX * pointer.cm_per_px
-        if moved:  # a drag; a click waits for the second point instead
-            self._end = self._snapped(pointer)
-            self._finish()
+        measuring = self._start is not None and not self._done
+        if measuring and not _still_a_click(self._pressed, pointer):  # a click waits instead
+            self._finish(self._snapped(pointer))
 
     def key(self, key: int) -> bool:
         if key == Qt.Key.Key_Escape and self._start is not None:
@@ -662,27 +669,25 @@ class MeasureTool(Tool):
         self._done = False
         super().cancel()
 
+    def redraw(self) -> None:
+        if self._start is not None and self._end is not None:
+            self.show_line(self._start, self._end)
+
     def _snapped(self, pointer: Pointer) -> XY:
         if not pointer.snapping:
             return pointer.pos
-        rooms = room_targets(self.doc.apartment.rooms)
-        placed = placed_targets([*self.visible_furniture(), *self.visible_obstacles()])
-        targets = SnapTargets(rooms.vertices + placed.vertices, rooms.edges + placed.edges)
         tolerance = style.SNAP_PX * pointer.cm_per_px
-        return snap(pointer.pos, targets, grid=None, tolerance=tolerance).point
+        return snap(pointer.pos, self._targets, grid=None, tolerance=tolerance).point
 
-    def _finish(self) -> None:
+    def _finish(self, end: XY) -> None:
+        assert self._start is not None
+        self._end = end
+        self.redraw()
+        if end == self._start:
+            return  # both ends on one point: keep waiting for the second one
         self._done = True
-        self._show()
-        assert self._start is not None and self._end is not None
         unit = self.doc.settings.display_unit
-        self.host.notify(f"Distance: {describe_distance(self._start, self._end, unit)}")
-
-    def _show(self) -> None:
-        assert self._start is not None and self._end is not None
-        line = [self._start, self._end]
-        labels = segment_labels(line, self.doc.settings.display_unit, closed=False)
-        self.host.plan.preview.show_outline(line, closed=False, valid=True, labels=labels)
+        self.host.notify(f"Distance: {describe_distance(self._start, end, unit)}")
 
 
 class RectRoomTool(Tool):
@@ -839,7 +844,7 @@ class PolygonTool(Tool):
         )
 
 
-def _still_a_click(drag: _Drag, pointer: Pointer) -> bool:
-    """The pointer hasn't moved far enough from the press for it to be a drag."""
-    moved = math.dist(pointer.pos, drag.start)
+def _still_a_click(pressed: XY, pointer: Pointer) -> bool:
+    """The pointer hasn't moved far enough from where it was pressed for a drag."""
+    moved = math.dist(pointer.pos, pressed)
     return moved < style.DRAG_PX * pointer.cm_per_px

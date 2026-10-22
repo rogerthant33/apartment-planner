@@ -295,7 +295,9 @@ or another tool is picked, and the status bar shows the distance with its
 horizontal and vertical parts when it's on a slant ("250 cm (200 cm
 horizontal, 150 cm vertical)"). Each end snaps within 10 px to the corners and
 edges of rooms and of visible furniture and obstacles, but not to the grid;
-Alt measures freely. Measuring changes nothing: no undo step, nothing saved,
+Alt (or snapping turned off in the project settings) measures freely. A click
+that doesn't move 4 px waits for the second point, and a second point on the
+first one is ignored. Zooming and other redraws keep the measurement shown. Measuring changes nothing: no undo step, nothing saved,
 and it works while the apartment is locked or the project is read-only.
 
 ## 7. Fit checking
