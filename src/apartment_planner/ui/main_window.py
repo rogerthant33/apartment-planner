@@ -39,9 +39,8 @@ from apartment_planner.state.furniture import (
     rename_layout,
     selected_furniture,
 )
-from apartment_planner.state.openings import selected_openings
-from apartment_planner.state.placed import selectable, selected_obstacles
-from apartment_planner.state.rooms import selected_room
+from apartment_planner.state.placed import selectable
+from apartment_planner.state.rooms import selected_rooms
 from apartment_planner.state.units import parse_length
 from apartment_planner.ui import dialogs, icons
 from apartment_planner.ui.commands import Commands
@@ -334,7 +333,9 @@ class MainWindow(QMainWindow):
         if locked:
             if self.view.tool.needs_apartment:
                 self.set_tool("select")
-            state.select(f.id for f in selected_furniture(state.doc, state.selection))
+            # Furniture and rooms stay selected (rooms can be looked at, not changed).
+            rooms = {r.id for r in selected_rooms(state.doc, state.selection)}
+            state.select({f.id for f in selected_furniture(state.doc, state.selection)} | rooms)
 
     def shortcut(self, command: Callable[[], None]) -> Callable[[], None]:
         """`command`, except while a text field has focus (it gets the keys instead)."""
@@ -390,7 +391,7 @@ class MainWindow(QMainWindow):
             self.choose_layout(state.doc.layouts[-1].id)
 
     def _select_room(self, room_id: str) -> None:
-        if self.editor is not None and not self.editor.doc.settings.apartment_locked:
+        if self.editor is not None:
             self.editor.select({room_id})
 
     def export_plan(self) -> None:
@@ -538,10 +539,6 @@ class MainWindow(QMainWindow):
         state = self.editor
         editable = state is not None and self.view.editable
         rooms = state is not None and self.view.can_edit_rooms()
-        has_room = state is not None and selected_room(state.doc, state.selection) is not None
-        furniture = selected_furniture(state.doc, state.selection) if state else []
-        obstacles = state is not None and bool(selected_obstacles(state.doc, state.selection))
-        openings = state is not None and bool(selected_openings(state.doc, state.selection))
         locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
@@ -556,12 +553,15 @@ class MainWindow(QMainWindow):
         for action in self.image_tool_actions:
             action.setEnabled(editable and has_image)
         self.import_background_action.setEnabled(editable)
-        apartment = rooms and (has_room or obstacles)
-        self.duplicate_action.setEnabled(editable and (bool(furniture) or apartment))
-        self.delete_action.setEnabled(editable and (bool(furniture) or apartment or openings))
+        # Like cut and paste, these decide what they can do, and say so if nothing.
+        self.duplicate_action.setEnabled(editable)
+        self.delete_action.setEnabled(editable)
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)
+        self.copy_action.setEnabled(state is not None)  # a read-only project can be copied from
+        for action in (self.cut_action, self.paste_action):
+            action.setEnabled(editable)
         self.lock_action.setEnabled(editable)
         self.lock_action.blockSignals(True)
         self.lock_action.setChecked(locked)
@@ -626,6 +626,9 @@ class MainWindow(QMainWindow):
         self.delete_action = action("Delete", self.delete_pressed)
         self.delete_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Backspace")])
         self.duplicate_action = action("Duplicate", self.commands.duplicate, "Ctrl+D")
+        self.copy_action = action("Copy", self.commands.copy, QKeySequence.StandardKey.Copy)
+        self.cut_action = action("Cut", self.commands.cut, QKeySequence.StandardKey.Cut)
+        self.paste_action = action("Paste", self.commands.paste, QKeySequence.StandardKey.Paste)
         self.cancel_action = action("Cancel", self.cancel, "Escape")
         self.addAction(self.cancel_action)  # a shortcut only, not in a menu
 
@@ -752,11 +755,15 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.export_action)
         file_menu.addSeparator()
         file_menu.addActions([self.close_action, self.quit_action])
-        # Only what has no button elsewhere; the rest are shortcuts on the window.
-        edit_menu = self.menuBar().addMenu("&Edit")
-        edit_menu.addActions([self.select_all_action, self.rotate_action, self.rotate_back_action])
+        # Editing is done with buttons and panels; these keep their keyboard shortcuts.
         self.addActions(
             [
+                self.select_all_action,
+                self.copy_action,
+                self.cut_action,
+                self.paste_action,
+                self.rotate_action,
+                self.rotate_back_action,
                 self.delete_action,
                 self.duplicate_action,
                 self.group_action,

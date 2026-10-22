@@ -327,6 +327,7 @@ class PreviewItem(QGraphicsPathItem):
         self.setZValue(10)
         self.valid = True
         self._labels: list[TextLabel] = []
+        self.start_marker: HandleItem | None = None
 
     def show_outline(
         self,
@@ -335,8 +336,13 @@ class PreviewItem(QGraphicsPathItem):
         closed: bool,
         valid: bool,
         labels: Sequence[tuple[XY, str]] = (),
+        mark_start: bool = False,
     ) -> None:
+        """`mark_start`: mark a drawing's first corner, to click to close it; it's
+        filled in once the outline shows closed."""
         self.show_outlines([points], closed=closed, valid=valid, labels=labels)
+        if mark_start and points:
+            self.start_marker = HandleItem(points[0], closed, self)
 
     def show_outlines(
         self,
@@ -362,12 +368,19 @@ class PreviewItem(QGraphicsPathItem):
         self.setBrush(fill if closed else Qt.BrushStyle.NoBrush)
         self.setPath(path)
         self._set_labels(labels)
+        self._remove_start_marker()
         self.show()
 
     def clear(self) -> None:
         self.setPath(QPainterPath())
         self._set_labels(())
+        self._remove_start_marker()
         self.hide()
+
+    def _remove_start_marker(self) -> None:
+        if self.start_marker is not None:
+            _detach(self.start_marker)
+            self.start_marker = None
 
     @property
     def label_texts(self) -> list[str]:
@@ -375,11 +388,15 @@ class PreviewItem(QGraphicsPathItem):
 
     def _set_labels(self, labels: Sequence[tuple[XY, str]]) -> None:
         for label in self._labels:
-            scene = label.scene()
-            if scene is not None:
-                scene.removeItem(label)
+            _detach(label)
         self._labels = []
         for position, text in labels:
             label = TextLabel(text, self)
             label.setPos(*position)
             self._labels.append(label)
+
+
+def _detach(item: QGraphicsItem) -> None:
+    scene = item.scene()
+    if scene is not None:
+        scene.removeItem(item)

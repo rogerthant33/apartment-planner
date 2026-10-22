@@ -116,12 +116,14 @@ def test_moves_snap_to_the_nearest_edge_and_stay_free_without_a_grid() -> None:
 @pytest.mark.parametrize(
     ("delta", "expected"),
     [
-        ((-7, 2), (-10, 2)),  # 3 cm from the left wall, 4 cm from the top one
-        ((-6, 1), (-6, -2)),  # 4 cm from the left wall, 3 cm from the top one
-        ((-7, 1), (-7, -2)),  # 3 cm from both: the first edge listed wins
+        ((-7, 2), (-10, -2)),  # 3 cm from the left wall, 4 cm from the top one
+        ((-6, 1), (-10, -2)),  # 4 cm from the left wall, 3 cm from the top one
+        ((-7, 1), (-10, -2)),  # 3 cm from both
+        ((-7, 3), (-10, -2)),  # the top wall 5 cm away: just in reach for the slide
+        ((-7, 3.1), (-10, 3.1)),  # 5.1 cm: out of reach, so only flush to the left wall
     ],
 )
-def test_moves_into_a_corner_snap_flush_to_the_nearer_wall(
+def test_moves_into_a_corner_snap_flush_to_both_walls(
     delta: tuple[float, float], expected: tuple[float, float]
 ) -> None:
     result = snap_move(SOFA_CORNERS, SOFA_ORIGIN, delta, [TOP_WALL, WALL], grid=None, tolerance=5)
@@ -155,3 +157,22 @@ def test_room_moves_snap_to_corners_then_walls_then_the_grid(
     moved = snap_room_move(MOVING, delta, NEIGHBOUR, grid=10, tolerance=10)
 
     assert moved == pytest.approx(expected)
+
+
+def test_a_corner_slides_along_a_sloping_wall_into_the_corner_it_makes() -> None:
+    sloping = ((0.0, 0.0), (400.0, 300.0))  # 37 degrees down from the top-left corner
+    left = ((0.0, 0.0), (0.0, 400.0))
+    box = [(4.0, 10.0), (60.0, 52.0), (40.0, 80.0), (4.0, 80.0)]  # one corner 4 cm off each
+
+    dx, dy = snap_move(box, (30.0, 50.0), (0, 0), [left, sloping], grid=None, tolerance=10)
+
+    corner = (box[0][0] + dx, box[0][1] + dy)
+    assert corner == pytest.approx((0, 0), abs=1e-9)
+
+
+def test_a_degenerate_edge_is_snapped_to_as_a_point_with_no_slide() -> None:
+    point = ((10.0, 100.0), (10.0, 100.0))  # a zero-length edge, as a doubled corner gives
+
+    shift = snap_move(SOFA_CORNERS, SOFA_ORIGIN, (0, 0), [point], grid=None, tolerance=5)
+
+    assert shift == pytest.approx((-3, -2))  # the sofa's corner (13, 102) onto the point

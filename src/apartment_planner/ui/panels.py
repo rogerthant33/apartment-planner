@@ -107,7 +107,6 @@ class ToolsPanel(QWidget):
         # list's own click handler, which mustn't lose the clicked item.
         rooms = [(room.id, room.name) for room in doc.apartment.rooms]
         _sync_list(self.rooms, rooms, selection)
-        self.rooms.setEnabled(not doc.settings.apartment_locked)
         furniture = [(item.id, item.name) for item in doc.active_layout.furniture]
         _sync_list(self.furniture, furniture, selection, checked=lambda i: i not in hidden)
 
@@ -379,7 +378,7 @@ class PropertiesPanel(QStackedWidget):
             self.opening_page.show_opening(state, openings[0], apartment)
             self.setCurrentWidget(self.opening_page)
         elif room is not None:
-            self.room_page.show_room(state, room, editable)
+            self.room_page.show_room(state, room, apartment)
             self.setCurrentWidget(self.room_page)
         else:
             self.settings_page.show_settings(state, editable)

@@ -86,12 +86,14 @@ def test_clicking_a_group_member_selects_the_group(view: PlanView) -> None:
 def test_drag_moves_the_selection_once_and_snaps_flush_to_the_wall(view: PlanView) -> None:
     sofa, _ = ids(view)
 
-    drag(view, (200, 100), (180, 90), (107, 81))  # the sofa's left edge ends 7 cm from x=0
+    drag(view, (200, 100), (180, 90), (106, 81))  # the sofa's left edge ends 6 cm from x=0
 
     assert position(view, sofa) == (100, 81)
     view.state.undo()
     assert position(view, sofa) == (200, 100)
     assert not view.state.can_undo
+    drag(view, (200, 100), (107, 81))  # 7 cm: a gap left on purpose; the grid applies
+    assert position(view, sofa) == (110, 80)
 
 
 def test_alt_drag_moves_freely(view: PlanView) -> None:
@@ -173,4 +175,16 @@ def test_hidden_furniture_is_not_drawn_or_selectable(view: PlanView) -> None:
     drag(view, (200, 100))
 
     assert [item.item_id for item in view.plan.furniture] == [table]
-    assert view.state.selection == frozenset()
+    assert view.state.selection == {view.state.doc.apartment.rooms[0].id}  # the room under it
+
+
+def test_locked_room_clicks_select_only_rooms_and_bands_only_furniture(view: PlanView) -> None:
+    sofa, table = ids(view)
+    (room,) = view.state.doc.apartment.rooms
+    view.state.select({sofa})
+
+    drag(view, (50, 250), (51, 251), shift=True)  # a jittery Shift+click on the floor
+    assert view.state.selection == {room.id}
+    drag(view, (150, 200), (250, 260), shift=True)  # a Shift+band over the table
+
+    assert view.state.selection == {table}

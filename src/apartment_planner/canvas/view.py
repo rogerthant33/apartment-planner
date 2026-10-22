@@ -116,6 +116,10 @@ class PlanView(QGraphicsView):
         openings = selected_openings(state.doc, state.selection)
         furniture_only = all(isinstance(p, FurnitureItem) for p in placed) and not openings
         if not (placed and furniture_only) and not self.can_edit_rooms():
+            if state.selection:
+                self.notify(
+                    "The apartment is locked. Unlock it to delete rooms, doors or obstacles."
+                )
             return
         try:
             if placed:

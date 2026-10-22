@@ -130,7 +130,6 @@ def test_delete_action_removes_the_selected_room(window: MainWindow) -> None:
     window.delete_action.trigger()
 
     assert editor(window).doc.apartment.rooms == ()
-    assert not window.delete_action.isEnabled()
 
 
 def test_single_key_shortcuts_are_typed_into_text_fields(window: MainWindow) -> None:

@@ -20,6 +20,7 @@ hard-coded separators, and no OS-specific shell in tooling.
 - `uv run mypy`: type-check
 - `uv run ruff check` / `uv run ruff format`: lint / format
 - `uv run python packaging/build.py`: packaged build for this OS, into `dist/`
+  (a whole folder, not just the `.exe`; README.md says how to share it)
 - `uv add <pkg>` / `uv add --dev <pkg>`: add dependencies (never pip install)
 
 Before calling work done, run `uv run ruff check`, `uv run mypy` and
@@ -41,8 +42,12 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
 
 **Layering** (enforced by `tests/test_layering.py`): `model`, `geometry`,
 `fit` and `state` must not import PySide6. `persistence` may use only
-`PySide6.QtCore` (for `QLockFile`), never widgets. `canvas` and `ui` read from
+`PySide6.QtCore` (`QLockFile`, `QSettings`, `QStandardPaths`, `QTimer`), never
+widgets. `canvas` and `ui` read from
 `EditorState` and call its actions; they never mutate the document directly.
+
+More detailed rules per area are in `.claude/rules/` (canvas, geometry,
+persistence); read the one for the area you're changing.
 
 ## Invariants (don't break these)
 

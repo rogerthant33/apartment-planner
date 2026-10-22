@@ -10,6 +10,7 @@ from apartment_planner.model import FurnitureItem, RectShape, new_project
 from apartment_planner.persistence.archive import ProjectFile
 from apartment_planner.persistence.files import create_project_file
 from apartment_planner.state.editor import EditorState
+from apartment_planner.state.furniture import set_locked
 from apartment_planner.state.rooms import add_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.main_window import MainWindow
@@ -156,6 +157,7 @@ def test_fit_checks_panel_lists_findings_and_selects_their_items(window: MainWin
 
 
 def test_shortcuts_work_without_menu_entries(window: MainWindow) -> None:
+    assert [menu.text() for menu in window.menuBar().actions()] == ["&File", "&Help"]
     first = add_table(window)
     add_table(window)
     window.view.setFocus()
@@ -199,3 +201,47 @@ def test_turn_buttons_rotate_either_way_and_update_the_field(window: MainWindow)
 
     assert furniture(window)[-1].rotation == 15
     assert page.fields["rotation"].text() == "15°"
+    page.turn_buttons["clockwise 90"].click()
+    page.turn_buttons["anticlockwise 90"].click()
+    page.turn_buttons["anticlockwise 90"].click()
+    assert page.fields["rotation"].text() == "285°"
+    assert page.turn_buttons["clockwise 90"].toolTip() == "Turn 90° clockwise (R)"
+    assert page.turn_buttons["anticlockwise 90"].toolTip() == "Turn 90° anticlockwise (Shift+R)"
+
+
+def test_copy_cut_and_paste_with_the_keyboard(window: MainWindow) -> None:
+    table = add_table(window)
+    window.view.setFocus()
+    ctrl = Qt.KeyboardModifier.ControlModifier
+
+    QTest.keyClick(window.view, Qt.Key.Key_C, ctrl)
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    first, second = furniture(window)[1:]
+    assert [(f.name, f.x - table.x, f.y - table.y) for f in (first, second)] == [
+        ("Table 2", 50, 50),
+        ("Table 3", 100, 100),
+    ]
+    assert editor(window).selection == {second.id}
+
+    QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)
+    assert [f.name for f in furniture(window)] == ["Table", "Table 2"]
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)  # back where it was cut from
+    pasted = furniture(window)[-1]
+    assert (pasted.name, pasted.x, pasted.y) == ("Table 3", second.x, second.y)
+
+    editor(window).commit(set_locked(editor(window).doc, [pasted.id], True))
+    QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)  # refused: the table is locked
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    assert (furniture(window)[-1].x, len(furniture(window))) == (pasted.x + 50, 4)
+
+
+def test_cutting_a_room_with_a_corner_selected_cuts_the_whole_room(window: MainWindow) -> None:
+    window.lock_action.trigger()  # unlock
+    (room,) = editor(window).doc.apartment.rooms
+    editor(window).select({room.id, room.vertices[0].id})
+    window.view.setFocus()
+
+    QTest.keyClick(window.view, Qt.Key.Key_X, Qt.KeyboardModifier.ControlModifier)
+
+    assert editor(window).doc.apartment.rooms == ()

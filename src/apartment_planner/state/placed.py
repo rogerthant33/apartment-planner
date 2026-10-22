@@ -98,6 +98,13 @@ def duplicate_placed(
     obstacles = selected_obstacles(doc, ids)
     if not obstacles:
         return furniture.duplicate_furniture(doc, ids, offset)
+    return copy_obstacles(doc, obstacles, offset)
+
+
+def copy_obstacles(
+    doc: ProjectDoc, obstacles: Iterable[Obstacle], offset: XY
+) -> tuple[ProjectDoc, frozenset[str]]:
+    """Copies of `obstacles`, from this or another document, moved by `offset`."""
     copies = []
     for o in obstacles:
         doc, copy_id = add_obstacle(doc, o.shape, (o.x + offset[0], o.y + offset[1]), o.name)

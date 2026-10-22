@@ -115,3 +115,30 @@ def test_doorway_clearance_setting_controls_doorway_warnings(window: MainWindow)
 
     assert window.findings.summary.text() == "Everything fits."
     assert editor(window).doc.settings.default_clearance == 0
+
+
+def test_locked_rooms_are_chosen_from_the_list_read_only_and_stay_selected(
+    window: MainWindow,
+) -> None:
+    (room,) = editor(window).doc.apartment.rooms
+    rooms = window.tools.rooms
+
+    rooms.itemClicked.emit(rooms.item(0))
+    page = window.properties.room_page
+    assert editor(window).selection == {room.id}
+    assert (rooms.isEnabled(), page.name.isEnabled()) == (True, False)
+    window.lock_action.trigger()  # unlock
+    assert page.name.isEnabled()
+    window.lock_action.trigger()  # lock again
+    window.delete_action.trigger()
+    assert window.statusBar().currentMessage() == (
+        "The apartment is locked. Unlock it to delete rooms, doors or obstacles."
+    )
+    window.duplicate_action.trigger()
+
+    assert editor(window).doc.apartment.rooms == (room,)
+    assert editor(window).selection == {room.id}
+    assert not page.name.isEnabled()
+    assert window.statusBar().currentMessage() == (
+        "The apartment is locked. Unlock it to duplicate rooms or obstacles."
+    )
