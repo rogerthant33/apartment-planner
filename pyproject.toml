@@ -23,6 +23,10 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "SIM", "N", "RUF", "TID"]
 
+[tool.ruff.lint.pep8-naming]
+# Qt virtual methods keep their camelCase names when overridden.
+extend-ignore-names = ["*Event", "drawBackground", "drawForeground", "boundingRect", "itemChange"]
+
 [tool.ruff.lint.flake8-tidy-imports]
 # Absolute imports keep tests/test_layering.py simple and accurate.
 ban-relative-imports = "all"

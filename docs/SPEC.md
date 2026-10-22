@@ -56,18 +56,19 @@ Desktop-first main window with three columns.
   rotation, label, color, notes, metadata), actions (duplicate, delete, lock,
   group), and the warnings list for the current layout.
 - **Toolbar:** undo/redo, "Apartment locked" toggle, export plan. The **status
-  bar** shows save status: Saving… / Saved / Save failed — retrying /
-  Read-only.
-- **Menus:** File (New, Open…, Open Recent, Save a Copy As…, Rename…,
-  Show in Folder, Export Plan…, Close), Edit, View, Help.
+  bar** shows save status: Saving… (while a save is waiting or running) /
+  Saved / Save failed — retrying / Read-only.
+- **Menus:** File (New, Open…, Open Recent, Save Now, Save a Copy As…,
+  Rename…, Show in Folder, Export Plan…, Close, Quit), Edit, View, Help.
 
 ### Start screen
 
 Shown when no project is open. It lists `.apartment` files in the projects
 folder (default `Documents/Apartment Planner/`, configurable) plus recent files
-from elsewhere, with name and last-modified time, newest first. Actions: New,
-Open…, Rename, Duplicate, Delete (moves to the OS trash after confirmation),
-Show in Folder.
+from elsewhere, with name and last-modified time, newest first. A project's
+name is its file name. Actions: New, Open…, Rename, Duplicate (a new project
+named "<name> copy"), Delete (moves the file and its `.bak` to the OS trash
+after confirmation), Show in Folder, and changing the projects folder.
 
 ## 4. Coordinates and units
 
@@ -270,20 +271,27 @@ assets/<asset_id>.<ext>   # background images, stored uncompressed (ZIP_STORED)
 Projects may live in a shared cloud folder (Dropbox, OneDrive, iCloud).
 
 - **Lock file:** opening a project creates `<name>.apartment.lock` (Qt
-  `QLockFile`, holding user, host and PID; stale locks are detected). If
-  someone else holds the lock, the project opens **read-only** with a banner
-  saying who has it open, plus an option to save an editable copy.
+  `QLockFile`, holding the computer's host name and the PID). A lock left by a
+  crashed app on the same computer is cleared automatically; locks never
+  expire with age, because a project can stay open for days. If someone else
+  holds the lock, the project opens **read-only** with a banner naming the
+  computer that has it open, plus an option to save an editable copy. If the
+  lock file can't be created (a read-only folder), the project also opens
+  read-only.
 - **External-change detection:** remember the file's size, mtime and SHA-256
   after each load or save. Before each save, if the file on disk has changed,
-  don't overwrite it. Save to `<name> (conflict <date>).apartment` instead and
-  show a banner explaining what happened.
+  don't overwrite it. Save to `<name> (conflict <date>).apartment` instead,
+  continue working in that copy (it takes over the lock), and show a banner
+  explaining what happened. A file deleted on disk counts as changed.
 
 ### Project management
 
 New (choose a name; created in the projects folder), Open, Open Recent, Rename
-(renames the file, refused while it's locked), Save a Copy As (new project
-ID), Delete (to OS trash, with confirmation), Show in Folder. Recent files and
-window geometry are stored in `QSettings`.
+(renames the file and its `.bak`, refused while someone else has it open; the
+open project's stored name follows), Save a Copy As (new project ID; never
+replaces an existing file), Delete (to OS trash, with confirmation), Show in
+Folder. Names must work as file names on Windows and macOS. Recent files (up
+to 10), the projects folder and window geometry are stored in `QSettings`.
 
 ### Loading
 

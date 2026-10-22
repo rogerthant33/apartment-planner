@@ -1,14 +1,11 @@
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from apartment_planner.model import (
-    Apartment,
     BackgroundImage,
     DoorSpec,
-    EllipseShape,
     FurnitureItem,
     Group,
     Layout,
@@ -18,53 +15,9 @@ from apartment_planner.model import (
     ProjectSettings,
     RectShape,
     Room,
-    new_id,
     new_project,
 )
-from tests.factories import item, polygon_shape, rect_item, rect_room
-
-NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
-
-
-def full_project() -> ProjectDoc:
-    """A project touching every model type."""
-    room = rect_room(0, 0, 400, 300, "Living room")
-    door = Opening(
-        id=new_id(),
-        kind="door",
-        room_id=room.id,
-        edge_start_vertex_id=room.vertices[0].id,
-        offset=100,
-        width=80,
-        door=DoorSpec(hinge="start", swing="in"),
-    )
-    window = Opening(
-        id=new_id(),
-        kind="window",
-        room_id=room.id,
-        edge_start_vertex_id=room.vertices[2].id,
-        offset=200,
-        width=120,
-    )
-    group = Group(id=new_id(), name="Dining set")
-    table = item(EllipseShape(rx=60, ry=60), 200, 150).evolve(group_id=group.id, room_id=room.id)
-    layout_a = Layout(
-        id=new_id(),
-        name="Sofa by window",
-        furniture=(rect_item(200, 90, 100, 50, rotation=90), table),
-        groups=(group,),
-    )
-    layout_b = Layout(
-        id=new_id(),
-        name="L-sofa",
-        furniture=(item(polygon_shape((0, 0), (100, 0), (100, 50), (0, 50))),),
-    )
-    base = new_project("Flat", now=NOW)
-    return base.evolve(
-        apartment=Apartment(rooms=(room,), openings=(door, window)),
-        layouts=(layout_a, layout_b),
-        active_layout_id=layout_b.id,
-    )
+from tests.factories import NOW, full_project, polygon_shape, rect_item, rect_room
 
 
 def background(**changes: Any) -> BackgroundImage:
