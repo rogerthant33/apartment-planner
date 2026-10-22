@@ -46,6 +46,7 @@ def test_lock_that_cannot_be_created_is_unavailable(tmp_path: Path) -> None:
     ("host", "expected"),
     [
         ("my-laptop", "this computer in another Apartment Planner window"),
+        ("MY-LAPTOP", "this computer in another Apartment Planner window"),
         ("ROGER-PC", '"ROGER-PC"'),
         ("", "another computer"),
     ],

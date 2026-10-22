@@ -32,7 +32,9 @@ def lock_path(path: Path) -> Path:
 
 
 def describe_holder(host: str, this_host: str) -> str:
-    if host == this_host:
+    # Host names are case-insensitive. On Windows QLockFile records the
+    # upper-case computer name (R9I) while Qt reports the DNS name (R9i).
+    if host.casefold() == this_host.casefold():
         return "this computer in another Apartment Planner window"
     return f'"{host}"' if host else "another computer"
 
