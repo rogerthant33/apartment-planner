@@ -48,7 +48,7 @@ def test_projects_with_rooms_open_locked_without_being_saved(
     before = (folder / "Flat.apartment").read_bytes()
 
     assert window.lock_action.isChecked()
-    assert not window.rect_tool_action.isEnabled()
+    assert not window.tool_action["rect"].isEnabled()
     window.save_now()
     assert (folder / "Flat.apartment").read_bytes() == before
 
@@ -143,9 +143,9 @@ def test_single_key_shortcuts_are_typed_into_text_fields(window: MainWindow) -> 
         QTest.keyClick(field, key)
 
     assert field.text() == "mp0"
-    assert window.select_tool_action.isChecked()
+    assert window.tool_action["select"].isChecked()
     QTest.keyClick(window.view, Qt.Key.Key_M)
-    assert window.rect_tool_action.isChecked()
+    assert window.tool_action["rect"].isChecked()
 
 
 def test_clicking_a_room_in_the_list_selects_it(window: MainWindow) -> None:
@@ -159,3 +159,17 @@ def test_clicking_a_room_in_the_list_selects_it(window: MainWindow) -> None:
 
     assert editor(window).selection == {editor(window).doc.apartment.rooms[0].id}
     assert window.properties.currentWidget() is window.properties.room_page
+
+
+def test_several_selected_rooms_get_their_own_page_and_delete_together(window: MainWindow) -> None:
+    window.lock_action.setChecked(False)
+    doc, second = add_room(editor(window).doc, [(400, 0), (600, 0), (600, 300), (400, 300)])
+    editor(window).commit(doc)
+    page = window.properties.rooms_page
+
+    editor(window).select({doc.apartment.rooms[0].id, second})
+    assert window.properties.currentWidget() is page
+    assert page.summary.text().startswith("2 rooms selected: Room 1, Room 2.")
+    page.buttons["Delete"].click()
+
+    assert editor(window).doc.apartment.rooms == ()

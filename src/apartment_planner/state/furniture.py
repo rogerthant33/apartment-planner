@@ -9,7 +9,7 @@ import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
-from apartment_planner.geometry.hits import room_at
+from apartment_planner.geometry.hits import room_at, room_locator
 from apartment_planner.geometry.polygon import edge_lengths, validate_polygon
 from apartment_planner.geometry.shapes import placed_polygon
 from apartment_planner.geometry.transform import XY, rotate
@@ -120,7 +120,8 @@ def move_furniture(doc: ProjectDoc, ids: Iterable[str], delta: XY) -> ProjectDoc
 def rotate_furniture(doc: ProjectDoc, ids: Iterable[str], degrees: float) -> ProjectDoc:
     """Turn one item about its origin, or several about the centre of their footprints."""
     items = _unlocked(doc, ids)
-    if len(items) == 1:
+    # With no items both branches raise ValueError, so `<=` is the same as `==`.
+    if len(items) == 1:  # pragma: no mutate
         (item,) = items
         return _replace(doc, {item.id: item.evolve(rotation=item.rotation + degrees)})
     cx, cy = footprint_centre(items)
@@ -166,7 +167,7 @@ def duplicate_furniture(
                 locked=False,
             ),
         )
-        for item, name in zip(items, names, strict=True)
+        for item, name in zip(items, names, strict=True)  # pragma: no mutate (one name each)
     )
     layout = layout.evolve(furniture=(*layout.furniture, *copies), groups=(*layout.groups, *groups))
     return _with_layout(doc, layout), frozenset(c.id for c in copies)
@@ -234,9 +235,12 @@ def set_shape_edge_length(doc: ProjectDoc, item_id: str, index: int, length: flo
     item = furniture_item(doc, item_id)
     assert isinstance(item.shape, PolygonShape)
     points = list(item.shape.points)
-    start, end = points[index], points[(index + 1) % len(points)]
+    # For an edge index in range, `-` instead of `%` gives a negative index naming the
+    # same corner.
+    end_index = (index + 1) % len(points)  # pragma: no mutate
+    start, end = points[index], points[end_index]
     scale = length / math.hypot(end.x - start.x, end.y - start.y)
-    points[(index + 1) % len(points)] = Point(
+    points[end_index] = Point(
         x=start.x + (end.x - start.x) * scale, y=start.y + (end.y - start.y) * scale
     )
     return set_shape_points(doc, item_id, points)
@@ -297,7 +301,8 @@ def duplicate_layout(doc: ProjectDoc, layout_id: str) -> tuple[ProjectDoc, str]:
 
 def delete_layout(doc: ProjectDoc, layout_id: str) -> ProjectDoc:
     """Delete a layout; the project keeps at least one. A neighbour becomes active if needed."""
-    if len(doc.layouts) == 1:
+    # A project always has a layout (the model requires one), so `<=` is the same as `==`.
+    if len(doc.layouts) == 1:  # pragma: no mutate
         raise EditError("A project needs at least one layout.")
     index = [layout.id for layout in doc.layouts].index(layout_id)
     layouts = tuple(layout for layout in doc.layouts if layout.id != layout_id)
@@ -347,8 +352,23 @@ def _unlocked(doc: ProjectDoc, ids: Iterable[str]) -> list[FurnitureItem]:
 
 def _placed_in_room(doc: ProjectDoc, item: FurnitureItem) -> FurnitureItem:
     """`item` with `room_id` naming the room its origin is in, if any."""
-    room_id = room_at(doc.apartment.rooms, (item.x, item.y))
-    return item if item.room_id == room_id else item.evolve(room_id=room_id)
+    return item.evolve(room_id=room_at(doc.apartment.rooms, (item.x, item.y)))
+
+
+def reassign_rooms(doc: ProjectDoc) -> ProjectDoc:
+    """Every item in every layout with `room_id` naming the room its origin is in,
+    after the rooms have changed."""
+    locate = room_locator(doc.apartment.rooms)
+
+    def placed(item: FurnitureItem) -> FurnitureItem:
+        room_id = locate((item.x, item.y))
+        return item if item.room_id == room_id else item.evolve(room_id=room_id)
+
+    layouts = tuple(
+        layout.evolve(furniture=tuple(placed(f) for f in layout.furniture))
+        for layout in doc.layouts
+    )
+    return doc.evolve(layouts=layouts)
 
 
 def _replace(doc: ProjectDoc, updated: dict[str, FurnitureItem]) -> ProjectDoc:
@@ -362,8 +382,13 @@ def _with_furniture(doc: ProjectDoc, furniture: tuple[FurnitureItem, ...]) -> Pr
 
 
 def _with_layout(doc: ProjectDoc, layout: Layout) -> ProjectDoc:
+    # `layout` always comes from evolving one of `doc.layouts`, and pydantic keeps the
+    # same ID string, so `is` would match exactly when `==` does.
     return doc.evolve(
-        layouts=tuple(layout if other.id == layout.id else other for other in doc.layouts)
+        layouts=tuple(
+            layout if other.id == layout.id else other  # pragma: no mutate
+            for other in doc.layouts
+        )
     )
 
 

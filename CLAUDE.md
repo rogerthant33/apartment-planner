@@ -19,6 +19,7 @@ hard-coded separators, and no OS-specific shell in tooling.
 - `uv run pytest`: run all tests (Qt tests run with the offscreen platform)
 - `uv run mypy`: type-check
 - `uv run ruff check` / `uv run ruff format`: lint / format
+- `uv run python packaging/build.py`: packaged build for this OS, into `dist/`
 - `uv add <pkg>` / `uv add --dev <pkg>`: add dependencies (never pip install)
 
 Before calling work done, run `uv run ruff check`, `uv run mypy` and
@@ -77,11 +78,12 @@ tests/          mirrors the package; tests/fixtures/ holds files per schema vers
   a case another test already covers, and don't add property tests that only
   restate an example test. Prefer boundary cases (just below and just above a
   threshold such as `EPS` or `MIN_EDGE_LENGTH`).
-- Mutation testing (cosmic-ray) is optional and only run when asked: a full
-  run takes about half an hour. `uv run python mutation/run.py` tests the
-  committed HEAD in a throwaway worktree and writes surviving mutants to
-  `mutation/last-report.txt`. When it is run, kill survivors with tests; a
-  truly equivalent mutant gets `# pragma: no mutate` with a comment saying why.
+- Mutation testing (cosmic-ray) runs once before a release, or when asked,
+  not after every change: a full run takes about an hour.
+  `uv run python mutation/run.py` tests the committed HEAD in a throwaway
+  worktree and writes surviving mutants to `mutation/last-report.txt`. Kill
+  survivors with tests; a truly equivalent mutant gets `# pragma: no mutate`
+  with a comment saying why.
 - Add new pure packages to `module-path` in `mutation/pure.toml`.
 
 ## Conventions

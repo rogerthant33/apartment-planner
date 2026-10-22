@@ -153,3 +153,35 @@ def test_fit_checks_panel_lists_findings_and_selects_their_items(window: MainWin
     assert editor(window).selection == {first.id, second.id}
     window.undo_action.trigger()
     assert panel.summary.text() == "Everything fits."
+
+
+def test_shortcuts_work_without_menu_entries(window: MainWindow) -> None:
+    first = add_table(window)
+    add_table(window)
+    window.view.setFocus()
+
+    QTest.keyClick(window.view, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    QTest.keyClick(window.view, Qt.Key.Key_G, Qt.KeyboardModifier.ControlModifier)
+    assert len(editor(window).doc.active_layout.groups) == 1
+    editor(window).select({first.id})
+    QTest.keyClick(window.view, Qt.Key.Key_Delete)
+
+    assert len(furniture(window)) == 1
+    assert first.id not in {f.id for f in furniture(window)}
+
+
+def test_colour_is_picked_from_the_colour_dialog_and_can_be_reset(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    add_table(window)
+    picker = window.properties.furniture_page.colour
+    monkeypatch.setattr(dialogs, "choose_colour", lambda parent, start: "#a0b0c0")
+
+    picker.swatch.click()
+    assert furniture(window)[-1].color == "#a0b0c0"
+    picker.reset.click()
+
+    assert furniture(window)[-1].color is None
+    window.undo_action.trigger()
+    assert furniture(window)[-1].color == "#a0b0c0"
+    assert picker.colour == "#a0b0c0"

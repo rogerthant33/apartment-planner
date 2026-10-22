@@ -29,6 +29,9 @@ from apartment_planner.ui.reveal import show_in_folder
 PATH_ROLE = Qt.ItemDataRole.UserRole
 
 
+COLUMN_WIDTH = 820  # px
+
+
 class StartScreen(QWidget):
     open_requested = Signal(Path)
     new_requested = Signal()
@@ -78,7 +81,12 @@ class StartScreen(QWidget):
         folder_row.addWidget(self.folder_label, 1)
         folder_row.addWidget(change_folder)
 
-        layout = QVBoxLayout(self)
+        # A column of readable width, centred in the window.
+        column = QWidget()
+        column.setMaximumWidth(COLUMN_WIDTH)
+        layout = QVBoxLayout(column)
+        layout.setContentsMargins(0, 24, 0, 24)
+        layout.setSpacing(10)
         title = QLabel("Apartment Planner")
         title.setStyleSheet("font-size: 20pt; font-weight: 600;")
         layout.addWidget(title)
@@ -86,6 +94,10 @@ class StartScreen(QWidget):
         layout.addWidget(self.empty_hint)
         layout.addWidget(self.projects, 1)
         layout.addLayout(button_row)
+        outer = QHBoxLayout(self)
+        outer.addStretch()
+        outer.addWidget(column, 100)
+        outer.addStretch()
 
         self.refresh()
 

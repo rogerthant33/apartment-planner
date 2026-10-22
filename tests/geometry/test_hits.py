@@ -56,17 +56,32 @@ def test_placed_at_finds_the_topmost_item_under_a_rotated_footprint() -> None:
     assert placed_at([lower, upper], (190, 20)) is None
 
 
-def test_rubber_band_takes_items_it_touches() -> None:
-    a, b = rect_item(100, 100, x=50, y=50), rect_item(100, 100, x=300, y=50)
+# A tall, narrow band, x 90..120 and y 10..260, dragged from each of its corners.
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ((120, 260), (90, 10)),
+        ((90, 10), (120, 260)),
+        ((90, 260), (120, 10)),
+        ((120, 10), (90, 260)),
+    ],
+)
+def test_rubber_band_takes_items_it_touches(
+    start: tuple[float, float], end: tuple[float, float]
+) -> None:
+    top_left, top_right = rect_item(100, 100, x=50, y=50), rect_item(100, 100, x=300, y=50)
+    bottom_left = rect_item(100, 100, x=50, y=250)
 
-    assert placed_in_rect([a, b], (120, 120), (90, -10)) == [a.id]
-    assert placed_in_rect([a, b], (0, 0), (400, 10)) == [a.id, b.id]
+    touched = placed_in_rect([top_left, top_right, bottom_left], start, end)
+
+    assert touched == [top_left.id, bottom_left.id]
 
 
 def test_nearest_within_respects_the_tolerance() -> None:
     points = {"a": (0.0, 0.0), "b": (10.0, 0.0)}
 
-    assert nearest_within(points, (7, 0), tolerance=3) == "b"
+    assert nearest_within(points, (7, 0), tolerance=3) == "b"  # exactly at the tolerance
+    assert nearest_within(points, (1, 1), tolerance=3) == "a"
     assert nearest_within(points, (5, 4), tolerance=3) is None
     assert nearest_within({}, (0, 0), tolerance=3) is None
 

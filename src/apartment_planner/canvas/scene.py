@@ -2,9 +2,11 @@ import math
 from collections.abc import Iterable, Sequence
 
 from PySide6.QtCore import QObject, QRectF
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from apartment_planner.canvas.items import (
+    BackgroundItem,
     ClearanceItem,
     HandleItem,
     OpeningItem,
@@ -21,6 +23,7 @@ from apartment_planner.geometry.hits import shape_corners
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
 from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
 from apartment_planner.state.placed import selected_placed
+from apartment_planner.state.rooms import selected_room
 from apartment_planner.state.units import Unit, format_length
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
@@ -38,6 +41,7 @@ class PlanScene(QGraphicsScene):
         self.furniture: list[PlacedItem] = []  # and obstacles
         self.openings: list[OpeningItem] = []
         self.readouts: list[ReadoutItem] = []
+        self.background: BackgroundItem | None = None
         self._extras: list[QGraphicsItem] = []  # handles and clearance zones
         self.preview = PreviewItem()
         self.addItem(self.preview)
@@ -48,6 +52,9 @@ class PlanScene(QGraphicsScene):
             self.removeItem(item)
         self.rooms, self.furniture, self.openings, self._extras = [], [], [], []
         self.readouts = []
+        if self.background is not None:
+            self.removeItem(self.background)
+            self.background = None
         self.preview.clear()
 
     def sync(
@@ -59,15 +66,23 @@ class PlanScene(QGraphicsScene):
         hidden: Iterable[str] = (),
         rotate_offset: float = 0.0,
         findings: Sequence[Finding] = (),
+        background: QPixmap | None = None,
+        dimensions: bool = False,
     ) -> None:
         """Redraw everything. `rotate_offset` is the rotate handle's distance in cm.
 
         Items involved in `findings` are outlined in their severity's colour.
+        `background` is the background image's picture, if it has one and it's
+        shown. `dimensions` labels every room's edges, not just the selected one's.
         """
         self.clear_plan()
         unit = doc.settings.display_unit
         flags = _flags(findings)
+        if doc.background is not None and doc.background.visible and background is not None:
+            self.background = BackgroundItem(doc.background, background)
+            self.addItem(self.background)
         handles = editable and not doc.settings.apartment_locked
+        reshaped = selected_room(doc, selection)  # corners show on one room at a time
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -75,7 +90,9 @@ class PlanScene(QGraphicsScene):
                 room,
                 unit,
                 selected=selected,
-                handles=selected and handles,
+                dimensions=dimensions,
+                openings=doc.apartment.openings,
+                handles=handles and reshaped is not None and reshaped.id == room.id,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
             )

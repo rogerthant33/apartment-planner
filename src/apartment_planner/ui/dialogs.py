@@ -3,8 +3,11 @@
 from enum import StrEnum
 from pathlib import Path
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QColorDialog,
+    QDialog,
     QFileDialog,
     QInputDialog,
     QLineEdit,
@@ -13,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from apartment_planner.persistence.library import name_problem
+from apartment_planner.ui.export_dialog import ExportChoice, ExportDialog, Format
 
 PROJECT_FILTER = "Apartment Planner projects (*.apartment)"
 
@@ -58,6 +62,33 @@ def ask_project_name(parent: QWidget | None, title: str, text: str = "") -> str 
 def open_file(parent: QWidget | None, folder: Path) -> Path | None:
     path, _ = QFileDialog.getOpenFileName(parent, "Open Project", str(folder), PROJECT_FILTER)
     return Path(path) if path else None
+
+
+def open_image(parent: QWidget | None, folder: Path) -> Path | None:
+    path, _ = QFileDialog.getOpenFileName(
+        parent, "Import Background Image", str(folder), "Images (*.png *.jpg *.jpeg *.webp)"
+    )
+    return Path(path) if path else None
+
+
+def choose_colour(parent: QWidget | None, start: QColor) -> str | None:
+    """A colour as #rrggbb, or None if the user cancels."""
+    colour = QColorDialog.getColor(start, parent, "Choose Colour")
+    return colour.name() if colour.isValid() else None
+
+
+def ask_export(parent: QWidget | None) -> ExportChoice | None:
+    dialog = ExportDialog(parent)
+    return dialog.choice() if dialog.exec() == QDialog.DialogCode.Accepted else None
+
+
+def save_export(parent: QWidget | None, suggested: Path, format: Format) -> Path | None:
+    """Where to export to; the file name always ends in the format's extension."""
+    filters = {"pdf": "PDF documents (*.pdf)", "png": "PNG images (*.png)"}
+    path, _ = QFileDialog.getSaveFileName(parent, "Export Plan", str(suggested), filters[format])
+    if not path:
+        return None
+    return Path(path) if path.lower().endswith(f".{format}") else Path(f"{path}.{format}")
 
 
 def save_file(parent: QWidget | None, title: str, suggested: Path) -> Path | None:

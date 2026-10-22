@@ -2,8 +2,8 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QSettings, Qt
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QSettings, Qt
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QImageReader, QKeySequence, QPalette
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -22,8 +23,14 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.canvas.view import PlanView
 from apartment_planner.persistence.errors import ProjectFileError
-from apartment_planner.persistence.library import Library, create_project, project_name
+from apartment_planner.persistence.library import (
+    Library,
+    create_project,
+    file_name_part,
+    project_name,
+)
 from apartment_planner.persistence.session import ProjectSession
+from apartment_planner.state.background import calibrate, image_type, set_background
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.furniture import (
     add_layout,
@@ -35,14 +42,17 @@ from apartment_planner.state.furniture import (
 from apartment_planner.state.openings import selected_openings
 from apartment_planner.state.placed import selectable, selected_obstacles
 from apartment_planner.state.rooms import selected_room
-from apartment_planner.ui import dialogs
+from apartment_planner.state.units import parse_length
+from apartment_planner.ui import dialogs, icons
 from apartment_planner.ui.commands import Commands
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
+from apartment_planner.ui.export import ExportError, export_pdf, export_png
 from apartment_planner.ui.findings_panel import FindingsPanel
 from apartment_planner.ui.open_project import OpenProject, local_now
 from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
 from apartment_planner.ui.reveal import show_in_folder
 from apartment_planner.ui.start_screen import StartScreen
+from apartment_planner.ui.theme import DARK_KEY, apply_theme, saved_dark
 
 APP_NAME = "Apartment Planner"
 GEOMETRY_KEY = "window/geometry"
@@ -82,6 +92,17 @@ class Banner(QFrame):
             self._action.trigger()
 
 
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """An image's size in pixels from its header, without decoding it; None if Qt
+    can't read it."""
+    buffer = QBuffer()
+    buffer.setData(QByteArray(data))
+    buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+    reader = QImageReader(buffer)
+    size = reader.size()
+    return (size.width(), size.height()) if reader.canRead() and size.isValid() else None
+
+
 class MainWindow(QMainWindow):
     """The start screen when no project is open, otherwise the editor."""
 
@@ -117,10 +138,11 @@ class MainWindow(QMainWindow):
 
         self.commands = Commands(self.view)
         self._create_actions()
+        tool = self.tool_action
         self.tools = ToolsPanel(
-            self.tool_actions.actions()[:3],
-            [*self.tool_actions.actions()[3:], *self.obstacle_actions],
-            self.add_actions,
+            [tool["select"], tool["rect"], tool["polygon"]],
+            [*self.opening_tool_actions, *self.obstacle_actions],
+            [*self.add_actions, tool["shape"]],
             self.layout_actions,
         )
         self.tools.room_activated.connect(self._select_room)
@@ -132,6 +154,7 @@ class MainWindow(QMainWindow):
         for buttons in (pages.furniture_page.buttons, pages.selection_page.buttons):
             buttons["Duplicate"].clicked.connect(self.commands.duplicate)
             buttons["Delete"].clicked.connect(self.view.delete_selection)
+        pages.rooms_page.buttons["Delete"].clicked.connect(self.view.delete_selection)
         pages.selection_page.buttons["Group"].clicked.connect(self.commands.group)
         pages.selection_page.buttons["Ungroup"].clicked.connect(self.commands.ungroup)
         pages.selection_page.buttons["Lock"].clicked.connect(self.commands.toggle_lock)
@@ -139,6 +162,11 @@ class MainWindow(QMainWindow):
         pages.room_page.duplicate.clicked.connect(self.commands.duplicate)
         pages.room_page.delete.clicked.connect(self.view.delete_selection)
         pages.opening_page.buttons["Delete"].clicked.connect(self.view.delete_selection)
+        pages.settings_page.background.add_actions(
+            [self.import_background_action, *self.image_tool_actions]
+        )
+        self.view.calibration_requested.connect(self._calibrate)
+        self.view.tool_changed.connect(lambda name: self.tool_action[name].setChecked(True))
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
         self.tools_panel = self._add_panel("Tools", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
@@ -254,9 +282,29 @@ class MainWindow(QMainWindow):
         return self.project.editor if self.project is not None else None
 
     def set_tool(self, name: str) -> None:
-        self.view.set_tool(name)
-        self.tool_actions.actions()[list(self.view.tools).index(name)].setChecked(True)
+        self.view.set_tool(name)  # its tool_changed signal checks the tool's action
         self.view.setFocus()
+
+    def set_dark(self, dark: bool) -> None:
+        """Switch between light and dark appearance, and remember the choice."""
+        self.settings.setValue(DARK_KEY, dark)
+        self._apply_dark(dark)
+        self.findings.restyle()
+        self.view.viewport().update()
+        self._refresh_editor()
+
+    def _apply_dark(self, dark: bool) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            apply_theme(app, dark)
+        self._update_icons()
+
+    def _update_icons(self) -> None:
+        # The application's palette: the window's catches up with a theme change later.
+        colour = QApplication.palette().color(QPalette.ColorRole.ButtonText)
+        self.lock_action.setIcon(icons.lock_icon(colour))
+        self.zoom_fit_action.setIcon(icons.fit_icon(colour))
+        self.theme_action.setIcon(icons.theme_icon(colour))
 
     def undo(self) -> None:
         if self.editor is not None:
@@ -284,8 +332,8 @@ class MainWindow(QMainWindow):
         settings = state.doc.settings.evolve(apartment_locked=locked)
         state.update_untracked(state.doc.evolve(settings=settings))
         if locked:
-            if self.view.tool not in (self.view.tools["select"], self.view.tools["polygon"]):
-                self.set_tool("select")  # the other tools edit the apartment
+            if self.view.tool.needs_apartment:
+                self.set_tool("select")
             state.select(f.id for f in selected_furniture(state.doc, state.selection))
 
     def shortcut(self, command: Callable[[], None]) -> Callable[[], None]:
@@ -341,15 +389,88 @@ class MainWindow(QMainWindow):
         if state is not None:
             self.choose_layout(state.doc.layouts[-1].id)
 
-    def set_snapping(self, enabled: bool) -> None:
-        state = self.editor
-        if state is not None and state.doc.settings.snap_enabled != enabled:
-            settings = state.doc.settings.evolve(snap_enabled=enabled)
-            state.update_untracked(state.doc.evolve(settings=settings))
-
     def _select_room(self, room_id: str) -> None:
         if self.editor is not None and not self.editor.doc.settings.apartment_locked:
             self.editor.select({room_id})
+
+    def export_plan(self) -> None:
+        project = self.project
+        if project is None:
+            return
+        choice = dialogs.ask_export(self)
+        if choice is None:
+            return
+        doc = project.doc
+        name = file_name_part(f"{doc.name} - {doc.active_layout.name}")
+        suggested = project.path.parent / f"{name}.{choice.format}"
+        path = dialogs.save_export(self, suggested, choice.format)
+        if path is None:
+            return
+        try:
+            if choice.format == "png":
+                export_png(doc, path, choice.px_per_m, choice.warnings)
+                scale = None
+            else:
+                scale = export_pdf(doc, path, choice.pdf, choice.warnings)
+        except (OSError, ExportError) as error:
+            dialogs.show_error(self, "Export Plan", dialogs.error_message(error))
+            return
+        wanted = choice.pdf.scale
+        if choice.format == "pdf" and wanted is not None and scale is None:
+            self.view.notify(
+                f"Exported {path.name}. The plan doesn't fit on {choice.pdf.paper} at 1:{wanted}, "
+                "so it was fitted to the page; try A3 or 1:100 to print it to scale."
+            )
+        else:
+            self.view.notify(f"Exported {path.name}.")
+
+    def import_background(self) -> None:
+        project = self.project
+        if project is None or not self.view.editable:
+            return
+        path = dialogs.open_image(self, self.library.folder)
+        if path is None:
+            return
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            dialogs.show_error(self, "Import Image", dialogs.error_message(error))
+            return
+        mime_type = image_type(data)
+        size = image_size(data)  # read from the header: the view decodes it once, to draw
+        if mime_type is None or size is None:
+            dialogs.show_error(
+                self,
+                "Import Image",
+                f"{path.name} isn't a PNG, JPEG or WebP image this app can read. "
+                "Export the plan as one of those and import it again.",
+            )
+            return
+        centre = self.view.mapToScene(self.view.viewport().rect().center())
+        asset_id = project.add_asset(data)
+        project.editor.commit(
+            set_background(project.doc, asset_id, mime_type, size, (centre.x(), centre.y()))
+        )
+        self.set_tool("calibrate")
+        self.view.notify("Click two points a known distance apart on the image to set its scale.")
+
+    def _calibrate(self, a: tuple[float, float], b: tuple[float, float]) -> None:
+        self.set_tool("select")
+        state = self.editor
+        if state is None:
+            return
+        text = dialogs.ask_text(
+            self, "Calibrate Image", "Real distance between the two points (such as 3.5 m):"
+        )
+        if text is None:
+            return
+        distance = parse_length(text, state.doc.settings.display_unit)
+        if distance is None:
+            self.view.notify(
+                f"{text!r} isn't a length. Calibrate again and enter one such as 3.5 m."
+            )
+            return
+        self.commands.apply(lambda doc: calibrate(doc, a, b, distance))
 
     def _select_finding(self, ids: tuple[str, ...]) -> None:
         if self.editor is not None:
@@ -377,6 +498,7 @@ class MainWindow(QMainWindow):
         self.banner.hide()
         if project.read_only_reason is not None:
             self.banner.show_message(project.read_only_reason, self.save_editable_copy_action)
+        self.view.assets = project.assets
         self.view.set_state(project.editor, editable=project.read_only_reason is None)
         self.set_tool("select")
         self.pages.setCurrentIndex(1)
@@ -423,10 +545,17 @@ class MainWindow(QMainWindow):
         locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
-        for action in (self.rect_tool_action, *self.opening_tool_actions, *self.obstacle_actions):
+        for name, tool in self.view.tools.items():
+            if tool.needs_apartment:
+                self.tool_action[name].setEnabled(rooms)
+        for action in self.obstacle_actions:
             action.setEnabled(rooms)
-        self.polygon_tool_action.setEnabled(editable)
-        self.polygon_tool_action.setText("Custom Shape" if locked else "Polygon Room")
+        self.tool_action["select"].setEnabled(state is not None)
+        self.tool_action["shape"].setEnabled(editable)
+        has_image = state is not None and state.doc.background is not None
+        for action in self.image_tool_actions:
+            action.setEnabled(editable and has_image)
+        self.import_background_action.setEnabled(editable)
         apartment = rooms and (has_room or obstacles)
         self.duplicate_action.setEnabled(editable and (bool(furniture) or apartment))
         self.delete_action.setEnabled(editable and (bool(furniture) or apartment or openings))
@@ -434,13 +563,15 @@ class MainWindow(QMainWindow):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)
         self.lock_action.setEnabled(editable)
-        self.snap_action.setEnabled(editable)
-        for action in (self.lock_action, self.snap_action):
-            action.blockSignals(True)
-        self.lock_action.setChecked(state is not None and state.doc.settings.apartment_locked)
-        self.snap_action.setChecked(state is not None and state.doc.settings.snap_enabled)
-        for action in (self.lock_action, self.snap_action):
-            action.blockSignals(False)
+        self.lock_action.blockSignals(True)
+        self.lock_action.setChecked(locked)
+        self.lock_action.blockSignals(False)
+        self.lock_action.setToolTip(
+            "Unlock apartment to change rooms, doors, windows and obstacles"
+            if locked
+            else "Lock apartment so arranging furniture can't move rooms, doors, windows "
+            "or obstacles"
+        )
         for action in (self.zoom_in_action, self.zoom_out_action, self.zoom_fit_action):
             action.setEnabled(state is not None)
 
@@ -450,8 +581,12 @@ class MainWindow(QMainWindow):
         self.tools_panel.setVisible(project is not None)
         self.properties_panel.setVisible(project is not None)
         self.findings_panel.setVisible(project is not None)
-        self.toolbar.setVisible(project is not None)
-        for action in (self.close_action, self.save_copy_action, self.show_in_folder_action):
+        for action in (
+            self.close_action,
+            self.save_copy_action,
+            self.show_in_folder_action,
+            self.export_action,
+        ):
             action.setEnabled(project is not None)
         for action in (self.save_action, self.rename_action):
             action.setEnabled(editable)
@@ -495,30 +630,38 @@ class MainWindow(QMainWindow):
         self.addAction(self.cancel_action)  # a shortcut only, not in a menu
 
         self.tool_actions = QActionGroup(self)
-        for name, text, key in (
-            ("select", "Select", "V"),
-            ("rect", "Rectangle Room", "M"),
-            ("polygon", "Polygon Room", "P"),  # a custom shape while the apartment is locked
-            ("door", "Door", "D"),
-            ("window", "Window", "W"),
-            ("opening", "Opening", "O"),
+        self.tool_action: dict[str, QAction] = {}
+        for name, text, key, tip in (
+            ("select", "Select", "V", "Select and move things (V)"),
+            ("rect", "Rectangle Room", "M", "Drag out a rectangular room (M)"),
+            ("polygon", "Polygon Room", "P", "Click a room's corners, then Enter (P)"),
+            ("shape", "Custom Shape", None, "Click a furniture shape's corners, then Enter"),
+            ("door", "Door", "D", "Click a wall to add a door (D)"),
+            ("window", "Window", "W", "Click a wall to add a window (W)"),
+            ("opening", "Opening", "O", "Click a wall to add an opening without a door (O)"),
+            ("image", "Move", None, "Drag the background image into place"),
+            (
+                "calibrate",
+                "Calibrate",
+                None,
+                "Click two points a known distance apart on the image, then enter the distance",
+            ),
         ):
             tool = action(text, lambda _=False, n=name: self.set_tool(n), key)
             tool.setCheckable(True)
-            tool.setToolTip(f"{text} ({key})")
+            tool.setToolTip(tip)
             self.tool_actions.addAction(tool)
-        self.select_tool_action, self.rect_tool_action, self.polygon_tool_action = (
-            self.tool_actions.actions()[:3]
-        )
-        self.opening_tool_actions = self.tool_actions.actions()[3:]
-        self.lock_action = QAction("Apartment Locked", self)
+            self.tool_action[name] = tool
+        self.opening_tool_actions = [self.tool_action[n] for n in ("door", "window", "opening")]
+        self.image_tool_actions = [self.tool_action[n] for n in ("image", "calibrate")]
+        self.import_background_action = action("Import Image…", self.import_background)
+        self.import_background_action.setToolTip("Import a floor-plan image to trace over")
+        self.lock_action = QAction("Lock Apartment", self)
         self.lock_action.setCheckable(True)
-        self.lock_action.setToolTip("While locked, rooms can't be selected or changed")
         self.lock_action.toggled.connect(self.set_apartment_locked)
-        self.snap_action = QAction("Snap to Grid and Rooms", self)
-        self.snap_action.setCheckable(True)
-        self.snap_action.setToolTip("Hold Alt while dragging to suspend snapping")
-        self.snap_action.toggled.connect(self.set_snapping)
+        self.theme_action = QAction("Dark Mode", self)
+        self.theme_action.setCheckable(True)
+        self.theme_action.setToolTip("Dark mode")
         self.zoom_in_action = action(
             "Zoom In", lambda: self.view.zoom_by(1.25), QKeySequence.StandardKey.ZoomIn
         )
@@ -526,6 +669,7 @@ class MainWindow(QMainWindow):
             "Zoom Out", lambda: self.view.zoom_by(0.8), QKeySequence.StandardKey.ZoomOut
         )
         self.zoom_fit_action = action("Zoom to Fit", self.view.zoom_to_fit, "0")
+        self.zoom_fit_action.setToolTip("Zoom to fit (0)")
 
         commands = self.commands
         self.select_all_action = action(
@@ -588,8 +732,7 @@ class MainWindow(QMainWindow):
         self.save_editable_copy_action = action("Save an Editable Copy…", self.save_editable_copy)
         self.rename_action = action("Rename…", self.rename_project)
         self.show_in_folder_action = action("Show in Folder", self.show_in_folder)
-        self.export_action = action("Export Plan…", lambda: None)
-        self.export_action.setEnabled(False)  # milestone 7
+        self.export_action = action("Export Plan…", self.export_plan, "Ctrl+E")
         self.close_action = action("Close", self.close_project, QKeySequence.StandardKey.Close)
         self.quit_action = action("Quit", self.close, QKeySequence.StandardKey.Quit)
         self.quit_action.setMenuRole(QAction.MenuRole.QuitRole)
@@ -605,25 +748,26 @@ class MainWindow(QMainWindow):
         file_menu.addActions([self.save_action, self.save_copy_action, self.rename_action])
         file_menu.addAction(self.show_in_folder_action)
         file_menu.addSeparator()
+        file_menu.addAction(self.import_background_action)
         file_menu.addAction(self.export_action)
         file_menu.addSeparator()
         file_menu.addActions([self.close_action, self.quit_action])
+        # Only what has no button elsewhere; the rest are shortcuts on the window.
         edit_menu = self.menuBar().addMenu("&Edit")
-        edit_menu.addActions([self.undo_action, self.redo_action])
-        edit_menu.addSeparator()
-        edit_menu.addActions([self.select_all_action, self.duplicate_action, self.delete_action])
-        edit_menu.addSeparator()
-        edit_menu.addActions(self.furniture_actions[:5])
-        add_menu = edit_menu.addMenu("Add Furniture")
-        add_menu.addActions(self.add_actions)
-        apartment_menu = edit_menu.addMenu("Add to Apartment")
-        apartment_menu.addActions([*self.opening_tool_actions, *self.obstacle_actions])
-        edit_menu.addSeparator()
-        edit_menu.addAction(self.lock_action)
-        view_menu = self.menuBar().addMenu("&View")
-        view_menu.addActions([self.zoom_in_action, self.zoom_out_action, self.zoom_fit_action])
-        view_menu.addSeparator()
-        view_menu.addAction(self.snap_action)
+        edit_menu.addActions([self.select_all_action, self.rotate_action, self.rotate_back_action])
+        self.addActions(
+            [
+                self.delete_action,
+                self.duplicate_action,
+                self.group_action,
+                self.ungroup_action,
+                self.lock_items_action,
+                self.zoom_in_action,
+                self.zoom_out_action,
+                self.zoom_fit_action,
+                *self.tool_actions.actions(),
+            ]
+        )
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(self.about_action)
 
@@ -650,7 +794,17 @@ class MainWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.toolbar.addActions([self.undo_action, self.redo_action])
         self.toolbar.addSeparator()
-        self.toolbar.addActions([self.lock_action, self.export_action])
+        self.toolbar.addActions([self.lock_action, self.zoom_fit_action])
+        self.toolbar.addSeparator()
+        self.toolbar.addAction(self.export_action)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.toolbar.addWidget(spacer)
+        self.toolbar.addAction(self.theme_action)
+        dark = saved_dark(self.settings)
+        self.theme_action.setChecked(dark)  # before set_dark is connected: nothing to redraw yet
+        self._apply_dark(dark)
+        self.theme_action.toggled.connect(self.set_dark)
 
     def _add_panel(self, title: str, area: Qt.DockWidgetArea, widget: QWidget) -> QDockWidget:
         dock = QDockWidget(title, self)

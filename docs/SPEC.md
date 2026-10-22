@@ -42,7 +42,7 @@ obstacles, then try out several furniture layouts and check what fits.
 | Data model / validation | pydantic v2 |
 | Tests | pytest, hypothesis (geometry properties), pytest-qt (UI) |
 | Lint / format / types | ruff, mypy (strict, pydantic plugin) |
-| Packaging | PyInstaller, one build per OS (milestone 7) |
+| Packaging | PyInstaller, one-folder build per OS (`packaging/build.py`); macOS gets an `.app` |
 
 ## 3. Interface
 
@@ -51,8 +51,9 @@ Desktop-first main window with three columns.
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
   tools, "add to the apartment" tools and obstacle templates (enabled while
   the apartment is unlocked), "add furniture" templates (table, round table,
-  L-shaped corner sofa, placed at the centre of the view), the room list and
-  the furniture list.
+  L-shaped corner sofa, placed at the centre of the view) and the custom shape
+  tool, the room list and the furniture list. Drawing and placing tools go back
+  to the select tool once they've made their room, shape or opening.
   Unticking an item in the furniture list hides it from the canvas for this
   session only; hidden items can't be selected.
 - **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels and
@@ -60,11 +61,17 @@ Desktop-first main window with three columns.
 - **Right panel:** properties of the selection (numeric dimensions, position,
   rotation, label, color, notes, metadata), actions (duplicate, delete, lock,
   group), and the warnings list for the current layout.
-- **Toolbar:** undo/redo, "Apartment locked" toggle, export plan. The **status
-  bar** shows save status: Saving… (while a save is waiting or running) /
-  Saved / Save failed — retrying / Read-only.
+- **Toolbar:** undo/redo, a padlock "Lock apartment" toggle (its icon shows
+  locked or unlocked; hovering explains it), a zoom-to-fit icon, export plan,
+  and a dark-mode toggle at the far end. The **status bar** shows save status:
+  Saving… (while a save is waiting or running) / Saved / Save failed —
+  retrying / Read-only.
 - **Menus:** File (New, Open…, Open Recent, Save Now, Save a Copy As…,
-  Rename…, Show in Folder, Export Plan…, Close, Quit), Edit, View, Help.
+  Rename…, Show in Folder, Import Image…, Export Plan…, Close, Quit), Edit
+  (only what has no button elsewhere: Select All Furniture, Rotate 90° either
+  way) and Help. Everything else is a button or panel control; its keyboard
+  shortcut works without a menu entry. Zoom is Ctrl + wheel or Ctrl +/−;
+  snapping is a project setting.
 
 ### Start screen
 
@@ -112,6 +119,15 @@ after confirmation), Show in Folder, and changing the projects folder.
   There is no wall graph: each room owns its polygon.
 - Vertex snapping: to other rooms' vertices, then to their edges (both within
   10 px on screen), then to the grid.
+- Move whole rooms by dragging inside them (while the apartment is unlocked).
+  Shift+ or Ctrl+click adds rooms to the selection; dragging any selected room
+  moves them all, with their openings. A moved corner snaps onto another
+  room's corner, or else the rooms move flush against the nearest wall within
+  10 px, or else the first corner lands on the grid. Alt suspends snapping. A
+  press that moves less than 4 px is a click and moves nothing. Furniture
+  stays where it is (only its room assignment is updated). Corner handles show
+  only while a single room is selected. A read-only project still selects
+  rooms but doesn't move them.
 
 ### Validation
 
@@ -134,6 +150,10 @@ rejected inline. Overlapping rooms are allowed but produce a warning.
   `out` = away from it), shown as a quarter-circle swing arc. The swing area
   is part of fit checking.
 - **Windows:** drawn as a thin double line across the edge.
+- Where edge lengths are shown (the selected room, exports), an edge with
+  openings also shows the lengths it's split into (wall, opening, wall, …)
+  just inside the room, with its full length moved just outside.
+  Overlapping openings count as one.
 - Plain openings (no door) are supported for archways.
 - The Door, Window and Opening tools (D, W, O) place one where you click,
   on the nearest wall within 25 px, at a grid step along it, with a default
@@ -175,19 +195,22 @@ locked; that alone doesn't count as a change to save.
 
 `id`, `name`, `category?`, `shape`, `x`, `y` (world position of the local
 origin), `rotation`, `color?`, `notes?`, `room_id?`, `locked`, `group_id?`,
-`clearance?` (cm, overrides the project default), `meta?` (`product`, `url`,
-`price`).
+`clearance?` (cm of free space wanted around the item; see §7), `meta?`
+(`product`, `url`, `price`).
 
 `room_id` is kept up to date automatically: it names the room the item's
 origin stands in. New items get numbered names ("Table", "Table 2", …). The
 properties panel edits every field of a single item (width and depth for
 rectangles and ellipses, edge lengths for polygons); several selected items
-get group, ungroup, lock, unlock, duplicate and delete.
+get group, ungroup, lock, unlock, duplicate and delete. The fill colour is
+picked with the system colour dialog (with a button back to the default
+fill), for furniture, obstacles and rooms alike. Notes come last, after the
+product details. Hovering over Clearance explains it.
 
 ### Manipulation
 
-- Select (click, Shift+click, rubber band touching the items), drag, move
-  multiple selected items. Furniture can be selected whether or not the
+- Select (click, Shift+ or Ctrl+click to add or remove, rubber band touching
+  the items), drag, move multiple selected items. Ctrl is Cmd on macOS. Furniture can be selected whether or not the
   apartment is locked.
 - Resize with handles or numeric input; rotate with a handle (snaps to 15°
   increments, hold Alt for free rotation) or numeric input. A single item
@@ -202,9 +225,10 @@ get group, ungroup, lock, unlock, duplicate and delete.
 
 ### Custom polygon drawing
 
-The polygon tool (P) draws a room while the apartment is unlocked and a
-custom furniture shape while it is locked. Click points; close on the first
-point or with Enter; Escape cancels. Show edge lengths while drawing and
+Two tools draw polygons the same way: Polygon Room (P, only while the
+apartment is unlocked) and Custom Shape (in "Add furniture", any time), which
+makes a piece of furniture. Click points; close on the first point or with
+Enter; Escape cancels. Show edge lengths while drawing and
 after creation. Edit vertices by dragging or numerically. Validated like
 rooms (either winding is fine). The shape's origin is the centre of its
 bounding box.
@@ -227,10 +251,11 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | Space + drag, middle-drag | Pan |
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
-| V, M, P | Select tool, rectangle room tool, polygon tool |
+| V, M, P | Select tool, rectangle room tool, polygon room tool |
 | D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |
+| Ctrl+E | Export plan |
 
 Shortcuts are ignored while a text field has focus.
 
@@ -363,6 +388,13 @@ to 10), the projects folder and window geometry are stored in `QSettings`.
 - **PDF:** the same rendering through `QPdfWriter`, A4 or A3, portrait or
   landscape, printed **to a stated scale** (1:50 or 1:100) when it fits,
   otherwise fit-to-page with the scale bar shown.
+- File → Export Plan… (Ctrl+E) asks for the format and its options, then
+  where to save (suggesting "<project> - <layout>" next to the project). The
+  drawing shows every room's edge lengths, 50 cm of space around the plan, a
+  title (with the scale when printed to scale) and a round-length scale bar;
+  no grid, selection or background image. To-scale PDFs are centred on the
+  page. If the plan doesn't fit at the chosen scale, the status bar says it
+  was fitted to the page instead.
 
 ## 10. Background floor-plan image
 
@@ -372,6 +404,15 @@ to 10), the projects folder and window geometry are stored in `QSettings`.
   distance between them. Then position (drag) and optionally rotate the image.
 - Opacity, visibility and lock controls. Rooms can be traced over it.
 - The calibration is saved in the project.
+- Import (File menu, or the "Background image" box under the project
+  settings) replaces any earlier image. It arrives unlocked at 1 cm per pixel,
+  centred in the view, and the Calibrate tool starts: click two points, then
+  enter the distance (such as 3.5 m). Calibration scales the image about the
+  first point. The Move and Calibrate tools only work while it's unlocked; rotation turns it
+  about its top-left corner. Image edits are undoable like any other change.
+- Only PNG, JPEG and WebP files are taken, recognised by their contents. The
+  image is drawn under the rooms, included in zoom to fit, and left out of
+  plan exports.
 
 ## 11. Data model (schema v1)
 
@@ -513,13 +554,17 @@ through the current loader. Breaking a fixture is a failing test.
 
 ## 13. Visual design
 
-A clean technical drawing using the Qt Fusion style with a forced light
-palette: light neutral background, subtle grid (minor and major lines), dark
-room outlines, soft room fills, furniture in muted fills with darker outlines.
-Doors and windows each have a distinct conventional symbol. Selection is a thin
-accent outline with small square handles. Red is reserved for collisions and
-amber for warnings. Precision and legibility come before decoration. Light
-theme only for the MVP.
+A clean technical drawing using the Qt Fusion style with the app's own light
+or dark palette: neutral background, subtle grid (minor and major lines),
+contrasting room outlines, soft room fills, furniture in muted fills with
+outlines. Doors and windows each have a distinct conventional symbol.
+Selection is a thin accent outline with small square handles. Red is reserved
+for collisions and amber for warnings. Precision and legibility come before
+decoration.
+
+Dark mode is switched from the toolbar and remembered per computer (not per
+project). The first time, it follows the system's appearance. Exports are
+always drawn in the light colours.
 
 ## 14. Out of scope
 
@@ -529,7 +574,7 @@ recognition; curved furniture geometry; retailer integrations; multiple
 storeys; wall thickness and construction-grade validation; vertical clearance.
 
 **Parked for later:** Plan/Furnish modes, measuring tape tool, furniture preset
-library, dark theme, auto-update.
+library, auto-update.
 
 ## 15. Milestones
 

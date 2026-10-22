@@ -14,6 +14,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QPolygonF,
 )
 from PySide6.QtWidgets import (
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsLineItem,
     QGraphicsPathItem,
+    QGraphicsPixmapItem,
     QGraphicsPolygonItem,
     QGraphicsRectItem,
     QStyleOptionGraphicsItem,
@@ -29,11 +31,18 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.canvas import style
 from apartment_planner.fit.findings import Severity
-from apartment_planner.geometry.openings import door_swing, edge, inward_normal, opening_span
+from apartment_planner.geometry.openings import (
+    door_swing,
+    edge,
+    edge_dimensions,
+    inward_normal,
+    opening_span,
+)
 from apartment_planner.geometry.readouts import Segment
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import (
+    BackgroundImage,
     EllipseShape,
     FurnitureItem,
     Obstacle,
@@ -51,7 +60,7 @@ def flag_color(flag: Severity | None, default: QColor) -> QColor:
     """Collisions are red and warnings amber (docs/SPEC.md §7)."""
     if flag is None:
         return default
-    return style.INVALID if flag == "collision" else style.WARNING
+    return style.colours.invalid if flag == "collision" else style.colours.warning
 
 
 def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
@@ -65,11 +74,14 @@ def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
 
 
 class TextLabel(QGraphicsItem):
-    """Text centred on its position, at a constant size on screen."""
+    """Text centred on its position (or `shift` screen pixels from it), at a
+    constant size on screen."""
 
     PADDING = 2.0
 
-    def __init__(self, text: str, parent: QGraphicsItem | None = None) -> None:
+    def __init__(
+        self, text: str, parent: QGraphicsItem | None = None, shift: XY = (0.0, 0.0)
+    ) -> None:
         super().__init__(parent)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.text = text
@@ -78,7 +90,7 @@ class TextLabel(QGraphicsItem):
         bounds = QFontMetricsF(self._font).boundingRect(
             QRectF(), Qt.AlignmentFlag.AlignCenter, text
         )
-        bounds.moveCenter(QPointF(0, 0))
+        bounds.moveCenter(QPointF(*shift))
         self._text_rect = bounds
         pad = self.PADDING
         self._rect = bounds.adjusted(-pad, -pad, pad, pad)
@@ -93,10 +105,10 @@ class TextLabel(QGraphicsItem):
         widget: QWidget | None = None,
     ) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 255, 255, 170))
+        painter.setBrush(style.colours.label_background)
         painter.drawRoundedRect(self._rect, 2, 2)
         painter.setFont(self._font)
-        painter.setPen(style.LABEL)
+        painter.setPen(style.colours.label)
         painter.drawText(self._text_rect, Qt.AlignmentFlag.AlignCenter, self.text)
 
 
@@ -108,8 +120,8 @@ class HandleItem(QGraphicsRectItem):
         super().__init__(-half, -half, style.HANDLE_PX, style.HANDLE_PX, parent)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(style.ACCENT if selected else QColor("white"))
+        self.setPen(cosmetic_pen(style.colours.accent, 1.5))
+        self.setBrush(style.colours.accent if selected else style.colours.handle_fill)
         self.setZValue(2)
 
 
@@ -123,13 +135,15 @@ class RoomItem(QGraphicsPolygonItem):
         handles: bool,
         selected_vertex: str | None = None,
         flag: Severity | None = None,
+        dimensions: bool = False,
+        openings: Sequence[Opening] = (),
     ) -> None:
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
         self.flag = flag
-        outline = style.ACCENT if selected else flag_color(flag, style.ROOM_OUTLINE)
+        outline = style.colours.accent if selected else flag_color(flag, style.colours.room_outline)
         self.setPen(cosmetic_pen(outline, style.OUTLINE_PX))
-        self.setBrush(QBrush(QColor(room.color) if room.color else style.ROOM_FILL))
+        self.setBrush(QBrush(QColor(room.color) if room.color else style.colours.room_fill))
 
         polygon = room_polygon(room)
         anchor = polygon.centroid
@@ -138,18 +152,21 @@ class RoomItem(QGraphicsPolygonItem):
         self.label = TextLabel(f"{room.name}\n{format_area(polygon.area)}", self)
         self.label.setPos(anchor.x, anchor.y)
 
-        self.edge_labels: list[TextLabel] = []
+        self.dimension_labels: list[TextLabel] = []
         self.handles: list[HandleItem] = []
-        if selected:
-            corners = [(v.x, v.y) for v in room.vertices]
-            for a, b in zip(corners, [*corners[1:], corners[0]], strict=True):
-                label = TextLabel(format_length(math.dist(a, b), unit), self)
-                label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
-                self.edge_labels.append(label)
+        if selected or dimensions:
+            self._add_dimensions(room, openings, unit)
         if handles:
             self.handles = [
                 HandleItem((v.x, v.y), v.id == selected_vertex, self) for v in room.vertices
             ]
+
+    def _add_dimensions(self, room: Room, openings: Sequence[Opening], unit: Unit) -> None:
+        for anchor, length, (sx, sy) in edge_dimensions(room, openings):
+            shift = (sx * style.DIMENSION_PX, sy * style.DIMENSION_PX)
+            label = TextLabel(format_length(length, unit), self, shift=shift)
+            label.setPos(*anchor)
+            self.dimension_labels.append(label)
 
 
 class RotateHandleItem(QGraphicsEllipseItem):
@@ -160,8 +177,8 @@ class RotateHandleItem(QGraphicsEllipseItem):
         super().__init__(-half, -half, style.HANDLE_PX, style.HANDLE_PX)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(QColor("white"))
+        self.setPen(cosmetic_pen(style.colours.accent, 1.5))
+        self.setBrush(style.colours.handle_fill)
         self.setZValue(3)
 
 
@@ -195,15 +212,21 @@ class PlacedItem(QGraphicsPathItem):
         self.setRotation(item.rotation)
         locked = isinstance(item, FurnitureItem) and item.locked
         obstacle = isinstance(item, Obstacle)
-        outline = style.ACCENT if selected else flag_color(flag, style.FURNITURE_OUTLINE)
+        outline = (
+            style.colours.accent if selected else flag_color(flag, style.colours.furniture_outline)
+        )
         width = 1.5 if flag is None else 2.5
         self.setPen(cosmetic_pen(outline, width, dashed=locked))
         if obstacle:
             self.setBrush(
-                QBrush(QColor(item.color or style.OBSTACLE_HATCH), Qt.BrushStyle.BDiagPattern)
+                QBrush(
+                    QColor(item.color or style.colours.obstacle_hatch), Qt.BrushStyle.BDiagPattern
+                )
             )
         else:
-            self.setBrush(QBrush(QColor(item.color) if item.color else style.FURNITURE_FILL))
+            self.setBrush(
+                QBrush(QColor(item.color) if item.color else style.colours.furniture_fill)
+            )
         self.setZValue(0.5 if obstacle else 1)
         self.label = TextLabel(item.name + (" (locked)" if locked else ""), self)
         self.edge_labels: list[TextLabel] = []
@@ -213,6 +236,21 @@ class PlacedItem(QGraphicsPathItem):
                 label = TextLabel(format_length(math.dist(a, b), unit), self)
                 label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
                 self.edge_labels.append(label)
+
+
+class BackgroundItem(QGraphicsPixmapItem):
+    """The floor-plan image under everything, placed and scaled as calibrated."""
+
+    def __init__(self, background: BackgroundImage, pixmap: QPixmap) -> None:
+        super().__init__(pixmap)
+        self.setPos(background.origin.x, background.origin.y)
+        self.setScale(background.cm_per_pixel)
+        self.setRotation(background.rotation)
+        self.setOpacity(background.opacity)
+        self.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        # Nothing hit-tests the image, so skip building a mask from its pixels.
+        self.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.setZValue(-1)
 
 
 class ClearanceItem(QGraphicsPathItem):
@@ -226,7 +264,7 @@ class ClearanceItem(QGraphicsPathItem):
         path.addPolygon(QPolygonF([QPointF(x, y) for x, y in zone.exterior.coords]))
         self.setPath(path)
         self.setPen(Qt.PenStyle.NoPen)
-        self.setBrush(style.CLEARANCE_FILL)
+        self.setBrush(style.colours.clearance_fill)
         self.setZValue(0.3)
 
 
@@ -236,7 +274,7 @@ class ReadoutItem(QGraphicsLineItem):
     def __init__(self, segment: Segment, text: str) -> None:
         (ax, ay), (bx, by) = segment
         super().__init__(ax, ay, bx, by)
-        self.setPen(cosmetic_pen(style.ACCENT, 1.0, dashed=True))
+        self.setPen(cosmetic_pen(style.colours.accent, 1.0, dashed=True))
         self.setZValue(9)
         self.label = TextLabel(text, self)
         self.label.setPos((ax + bx) / 2, (ay + by) / 2)
@@ -256,7 +294,7 @@ class OpeningItem(QGraphicsPathItem):
         self.opening_id = opening.id
         a, b = opening_span(room, opening)
         nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))
-        color = style.ACCENT if selected else style.ROOM_OUTLINE
+        color = style.colours.accent if selected else style.colours.room_outline
         self.setPen(cosmetic_pen(color, 1.5 if selected else 1.2))
         self.setZValue(0.8)
         path = QPainterPath()
@@ -277,7 +315,7 @@ class OpeningItem(QGraphicsPathItem):
                 path.lineTo(*point)
         self.setPath(path)
         gap = QGraphicsLineItem(a[0], a[1], b[0], b[1], self)
-        gap.setPen(cosmetic_pen(style.BACKGROUND, style.OUTLINE_PX + 2))
+        gap.setPen(cosmetic_pen(style.colours.background, style.OUTLINE_PX + 2))
         gap.setFlag(QGraphicsItem.GraphicsItemFlag.ItemStacksBehindParent)
 
 
@@ -317,7 +355,7 @@ class PreviewItem(QGraphicsPathItem):
                 if closed:
                     path.closeSubpath()
         self.valid = valid
-        color = style.ACCENT if valid else style.INVALID
+        color = style.colours.accent if valid else style.colours.invalid
         self.setPen(cosmetic_pen(color, style.OUTLINE_PX, dashed=True))
         fill = QColor(color)
         fill.setAlpha(40)

@@ -12,13 +12,21 @@ from tests.factories import item, polygon_shape, rect_item
 
 
 def test_handles_sit_on_the_box_and_the_rotate_handle_above_it() -> None:
-    sofa = rect_item(200, 90, x=300, y=100)
+    sofa = rect_item(201, 91, x=300, y=100)  # odd sizes, so the halves aren't whole
 
     handles = handle_positions(sofa, rotate_offset=30)
 
-    assert handles[Handle.NW] == (200, 55)
-    assert handles[Handle.E] == (400, 100)
-    assert handles[Handle.ROTATE] == (300, 25)
+    assert handles == {
+        Handle.N: (300, 54.5),
+        Handle.NE: (400.5, 54.5),
+        Handle.E: (400.5, 100),
+        Handle.SE: (400.5, 145.5),
+        Handle.S: (300, 145.5),
+        Handle.SW: (199.5, 145.5),
+        Handle.W: (199.5, 100),
+        Handle.NW: (199.5, 54.5),
+        Handle.ROTATE: (300, 24.5),
+    }
 
 
 @pytest.mark.parametrize(("angle", "rotate_at"), [(90, (375, 100)), (37, None)])
@@ -40,12 +48,12 @@ def test_polygon_rotate_handle_sits_above_its_highest_point() -> None:
 
 
 def test_corner_drag_keeps_the_opposite_corner() -> None:
-    sofa = rect_item(200, 90, x=300, y=100)  # spans x 200..400, y 55..145
+    sofa = rect_item(201, 91, x=300, y=100)  # spans x 199.5..400.5, y 54.5..145.5
 
     shape, origin = resized(sofa, Handle.SE, (450, 175))
 
-    assert shape == RectShape(width=250, depth=120)
-    assert origin == (325, 115)
+    assert shape == RectShape(width=250.5, depth=120.5)
+    assert origin == (324.75, 114.75)
 
 
 def test_side_drag_changes_one_dimension_of_a_rotated_item() -> None:
@@ -60,9 +68,9 @@ def test_side_drag_changes_one_dimension_of_a_rotated_item() -> None:
 def test_ellipse_resizes_by_its_diameters() -> None:
     table = item(EllipseShape(rx=50, ry=50), x=0, y=0)
 
-    shape, _ = resized(table, Handle.NW, (-70, -30))
+    shape, _ = resized(table, Handle.NW, (-71, -31))
 
-    assert shape == EllipseShape(rx=60, ry=40)
+    assert shape == EllipseShape(rx=60.5, ry=40.5)
 
 
 def test_dragging_past_the_opposite_side_stops_at_the_minimum_size() -> None:

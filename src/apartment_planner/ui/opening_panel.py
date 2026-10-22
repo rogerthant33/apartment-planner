@@ -7,12 +7,16 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QLabel, QLineEdit, QVBoxLa
 
 from apartment_planner.model import DoorSpec, Opening, ProjectDoc
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
-from apartment_planner.state.openings import opening, parse_opening_length, update_opening
+from apartment_planner.state.openings import (
+    opening,
+    parse_opening_offset,
+    parse_opening_width,
+    update_opening,
+)
 from apartment_planner.state.rooms import room
-from apartment_planner.state.units import format_length
+from apartment_planner.state.units import Unit, format_length
 from apartment_planner.ui.furniture_panel import action_buttons
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 
 KINDS = {"door": "Door", "window": "Window", "opening": "Opening (no door)"}
 HINGES = {"start": "At the wall's start", "end": "At the wall's end"}
@@ -38,9 +42,9 @@ class OpeningPage(QWidget):
         self.kind = _combo(KINDS)
         self.kind.activated.connect(lambda _: self._commit(kind=self.kind.currentData()))
         self.width_field = QLineEdit()
-        self.width_field.editingFinished.connect(lambda: self._commit_length("width"))
+        self.width_field.editingFinished.connect(self._commit_width)
         self.offset_field = QLineEdit()
-        self.offset_field.editingFinished.connect(lambda: self._commit_length("offset"))
+        self.offset_field.editingFinished.connect(self._commit_offset)
         self.offset_field.setToolTip("Distance from the wall's start to the opening's centre")
         self.hinge = _combo(HINGES)
         self.hinge.activated.connect(lambda _: self._commit_door(hinge=self.hinge.currentData()))
@@ -79,8 +83,7 @@ class OpeningPage(QWidget):
             self.hinge.setCurrentIndex(list(HINGES).index(shown.door.hinge))
             self.swing.setCurrentIndex(list(SWINGS).index(shown.door.swing))
         for combo in (self.hinge, self.swing):
-            combo.setVisible(door)
-            self._form.labelForField(combo).setVisible(door)
+            self._form.setRowVisible(combo, door)
         for widget in (self.kind, self.width_field, self.offset_field, self.hinge, self.swing):
             widget.setEnabled(editable)
         self.buttons["Delete"].setEnabled(editable)
@@ -93,19 +96,35 @@ class OpeningPage(QWidget):
         except KeyError:
             return None
 
-    def _commit_length(self, key: Literal["width", "offset"]) -> None:
+    def _commit_width(self) -> None:
+        edit = self._edited(self.width_field, "width")
+        if edit is not None:
+            current, text, unit = edit
+            self._apply(
+                lambda doc: update_opening(
+                    doc, current.id, width=parse_opening_width(doc, current, text, unit)
+                )
+            )
+
+    def _commit_offset(self) -> None:
+        edit = self._edited(self.offset_field, "offset")
+        if edit is not None:
+            current, text, unit = edit
+            self._apply(
+                lambda doc: update_opening(doc, current.id, offset=parse_opening_offset(text, unit))
+            )
+
+    def _edited(
+        self, field: QLineEdit, key: Literal["width", "offset"]
+    ) -> tuple[Opening, str, Unit] | None:
+        """The opening, the field's text and the unit, if the text was changed."""
         current, state = self._opening(), self.state
         if current is None or state is None:
-            return
-        field = self.width_field if key == "width" else self.offset_field
+            return None
         unit = state.doc.settings.display_unit
         if field.text() == format_length(getattr(current, key), unit):
-            return
-        self._apply(
-            lambda doc: update_opening(
-                doc, current.id, **parse_opening_length(doc, current, key, field.text(), unit)
-            )
-        )
+            return None
+        return current, field.text(), unit
 
     def _commit_door(self, **changes: str) -> None:
         current = self._opening()
@@ -119,13 +138,10 @@ class OpeningPage(QWidget):
 
     def _apply(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         assert self.state is not None
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            show_error(self.error, str(error))
-            current = self._opening()
-            if current is not None:
-                self.show_opening(self.state, current, self.editable)
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        commit_or_refuse(self.state, self.error, change, self._refresh)
+
+    def _refresh(self) -> None:
+        """Put the fields back to the document's values."""
+        current, state = self._opening(), self.state
+        if current is not None and state is not None:
+            self.show_opening(state, current, self.editable)

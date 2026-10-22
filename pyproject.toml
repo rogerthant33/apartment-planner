@@ -51,6 +51,7 @@ dev = [
     "cosmic-ray>=8.7.0",
     "hypothesis>=6.170.5",
     "mypy>=2.4.0",
+    "pyinstaller>=6.22.3",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "ruff>=0.17.1",

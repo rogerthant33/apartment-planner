@@ -125,3 +125,21 @@ def test_deleting_a_selected_opening(view: PlanView) -> None:
 
     assert view.state.doc.apartment.openings == ()
     assert len(view.state.doc.apartment.rooms) == 1
+
+
+def test_a_selected_room_shows_its_walls_split_by_openings(view: PlanView) -> None:
+    room_id = view.state.doc.apartment.rooms[0].id
+
+    view.state.select({room_id})
+    view.refresh()
+
+    (room_item,) = view.plan.rooms
+    assert [label.text for label in room_item.dimension_labels] == [
+        "400 cm",
+        "60 cm",
+        "80 cm",
+        "260 cm",
+        "300 cm",
+        "400 cm",
+        "300 cm",
+    ]

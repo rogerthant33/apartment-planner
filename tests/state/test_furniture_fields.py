@@ -8,7 +8,10 @@ from apartment_planner.state.furniture_fields import field_values, parse_field
 from tests.factories import item, polygon_shape, rect_item
 
 SOFA = rect_item(200, 90, x=150, y=-20, rotation=90).evolve(
-    clearance=60, meta=FurnitureMeta(product="Söderhamn", price=899)
+    category="Seating",
+    notes="Measure the stairwell",
+    clearance=60,
+    meta=FurnitureMeta(product="Söderhamn", price=899),
 )
 
 
@@ -20,6 +23,16 @@ def test_values_are_formatted_in_the_display_unit() -> None:
     assert values["rotation"] == "90°"
     assert (values["width"], values["depth"]) == ("2 m", "0.9 m")
     assert (values["clearance"], values["price"], values["url"]) == ("0.6 m", "899", "")
+
+
+def test_text_fields_show_their_text() -> None:
+    values = field_values(SOFA, "cm")
+
+    assert [values[key] for key in ("category", "notes", "product")] == [
+        "Seating",
+        "Measure the stairwell",
+        "Söderhamn",
+    ]
 
 
 def test_polygons_and_ellipses_show_the_fields_they_have() -> None:
@@ -40,7 +53,6 @@ def test_obstacles_have_no_furniture_details() -> None:
         "rotation",
         "width",
         "depth",
-        "color",
         "notes",
     }
 
@@ -53,11 +65,12 @@ def test_obstacles_have_no_furniture_details() -> None:
         ("x", "-2.5 m", {"x": -250}),
         ("rotation", "37,5°", {"rotation": 37.5}),
         ("width", "1.8 m", {"shape": RectShape(width=180, depth=90)}),
-        ("depth", "100", {"shape": RectShape(width=200, depth=100)}),
-        ("color", "#A0b0C0", {"color": "#A0b0C0"}),
+        ("depth", "0.5", {"shape": RectShape(width=200, depth=0.5)}),
         ("clearance", "", {"clearance": None}),
         ("clearance", "0.8 m", {"clearance": 80}),
         ("price", "", {"meta": FurnitureMeta(product="Söderhamn")}),
+        ("price", "0", {"meta": FurnitureMeta(product="Söderhamn", price=0)}),
+        ("price", "0,5", {"meta": FurnitureMeta(product="Söderhamn", price=0.5)}),
         (
             "url",
             "https://example.com",
@@ -82,10 +95,9 @@ def test_clearing_the_last_meta_field_drops_meta() -> None:
         ("x", "left", "X: enter a position"),
         ("rotation", "quarter", "Rotation: enter an angle"),
         ("width", "0", "Width: enter a length greater than 0"),
-        ("color", "red", "Colour: enter a colour"),
         ("clearance", "lots", "Clearance: enter a length"),
         ("price", "cheap", "Price: enter an amount"),
-        ("price", "-5", "Price: enter an amount of 0 or more"),
+        ("price", "-0.5", "Price: enter an amount of 0 or more"),
     ],
 )
 def test_unusable_text_is_refused_with_a_reason(key: str, text: str, message: str) -> None:

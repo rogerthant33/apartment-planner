@@ -11,6 +11,7 @@ from apartment_planner.geometry.polygon import is_clockwise, signed_area, valida
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Point, ProjectDoc, Room, Vertex, new_id
 from apartment_planner.state.errors import EditError
+from apartment_planner.state.furniture import reassign_rooms
 
 MIN_VERTICES = 3
 
@@ -74,8 +75,12 @@ def rename_room(doc: ProjectDoc, room_id: str, name: str) -> ProjectDoc:
     name = name.strip()
     if not name:
         raise EditError("Enter a name for the room.")
-    updated = room(doc, room_id).evolve(name=name)
-    return _with_rooms(doc, (updated if r.id == room_id else r for r in doc.apartment.rooms))
+    return _replace_room(doc, room(doc, room_id).evolve(name=name))
+
+
+def recolour_room(doc: ProjectDoc, room_id: str, color: str | None) -> ProjectDoc:
+    """Fill the room with `color` (#rrggbb), or the default fill for None."""
+    return _replace_room(doc, room(doc, room_id).evolve(color=color))
 
 
 def delete_room(doc: ProjectDoc, room_id: str) -> ProjectDoc:
@@ -121,11 +126,32 @@ def duplicate_room(doc: ProjectDoc, room_id: str, offset: XY) -> tuple[ProjectDo
 
 
 def selected_room(doc: ProjectDoc, selection: frozenset[str]) -> Room | None:
-    """The selected room, or the room of the selected vertex."""
-    for candidate in doc.apartment.rooms:
-        if candidate.id in selection or any(v.id in selection for v in candidate.vertices):
-            return candidate
-    return None
+    """The selected room, or the room of the selected vertex; None unless exactly one
+    room is selected (several selected rooms move together, but aren't reshaped)."""
+    chosen = [
+        r
+        for r in doc.apartment.rooms
+        if r.id in selection or any(v.id in selection for v in r.vertices)
+    ]
+    return chosen[0] if len(chosen) == 1 else None
+
+
+def selected_rooms(doc: ProjectDoc, selection: Iterable[str]) -> list[Room]:
+    ids = set(selection)
+    return [r for r in doc.apartment.rooms if r.id in ids]
+
+
+def move_rooms(doc: ProjectDoc, ids: Iterable[str], delta: XY) -> ProjectDoc:
+    """Move whole rooms. Their openings go with them; furniture stays put but is
+    reassigned to whichever room it now stands in."""
+    ids, (dx, dy) = set(ids), delta
+    rooms = [
+        r.evolve(vertices=tuple(v.evolve(x=v.x + dx, y=v.y + dy) for v in r.vertices))
+        if r.id in ids
+        else r
+        for r in doc.apartment.rooms
+    ]
+    return reassign_rooms(_with_rooms(doc, rooms))
 
 
 def delete_selection(doc: ProjectDoc, selection: frozenset[str]) -> ProjectDoc:
@@ -191,7 +217,8 @@ def delete_vertex(doc: ProjectDoc, room_id: str, vertex_id: str) -> ProjectDoc:
     """Remove a corner, merging its two edges. Openings on the removed edge move to the
     merged edge, as close to where they were as possible."""
     target = room(doc, room_id)
-    if len(target.vertices) <= MIN_VERTICES:
+    # pragma below: rooms have at least MIN_VERTICES corners, so `==` and `is` are the same.
+    if len(target.vertices) <= MIN_VERTICES:  # pragma: no mutate
         raise EditError(f"A room needs at least {MIN_VERTICES} corners.")
     i = _index(target, vertex_id)
     previous, removed, following = target.vertices[i - 1], target.vertices[i], _next(target, i)
@@ -240,18 +267,22 @@ def clamp_opening(opening: Opening, target: Room) -> Opening:
     length = _length(target.vertices[i], _next(target, i))
     half = opening.width / 2
     offset = (
-        # pragma: at width == length both branches give length / 2.
         length / 2
-        if opening.width >= length
-        else min(max(opening.offset, half), length - half)  # pragma: no mutate
+        # pragma below: at width == length both branches give length / 2, so `>` is the same.
+        if opening.width >= length  # pragma: no mutate
+        else min(max(opening.offset, half), length - half)
     )
-    return opening if offset == opening.offset else opening.evolve(offset=offset)
+    return opening.evolve(offset=offset)
 
 
 def _check(points: Sequence[Point]) -> None:
     problem = outline_problem(points)
     if problem is not None:
         raise EditError(problem)
+
+
+def _replace_room(doc: ProjectDoc, updated: Room) -> ProjectDoc:
+    return _with_rooms(doc, (updated if r.id == updated.id else r for r in doc.apartment.rooms))
 
 
 def _with_rooms(doc: ProjectDoc, rooms: Iterable[Room]) -> ProjectDoc:

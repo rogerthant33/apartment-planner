@@ -4,13 +4,12 @@ typed text changes. Obstacles have no category, clearance or product details.
 Pure, so the panel only shows text and commits what `parse_field` returns.
 """
 
-import re
 from typing import Any
 
 from apartment_planner.geometry.handles import box_size, with_box_size
 from apartment_planner.model import FurnitureItem, FurnitureMeta, Placed
 from apartment_planner.state.errors import EditError
-from apartment_planner.state.units import Unit, format_length, parse_length
+from apartment_planner.state.units import Unit, format_length, parse_angle, parse_length
 
 FIELDS: dict[str, str] = {
     "name": "Name",
@@ -20,17 +19,16 @@ FIELDS: dict[str, str] = {
     "rotation": "Rotation",
     "width": "Width",
     "depth": "Depth",
-    "color": "Colour",
     "clearance": "Clearance",
-    "notes": "Notes",
     "product": "Product",
     "url": "Link",
     "price": "Price",
+    "notes": "Notes",
 }
-"""Field keys and their labels, in the order the panel shows them."""
+"""Field keys and their labels, in the order the panel shows them. The colour is
+picked with a button, not typed."""
 
 META_FIELDS = ("product", "url", "price")
-_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def field_values(item: Placed, unit: Unit) -> dict[str, str]:
@@ -40,7 +38,6 @@ def field_values(item: Placed, unit: Unit) -> dict[str, str]:
         "x": format_length(item.x, unit),
         "y": format_length(item.y, unit),
         "rotation": f"{item.rotation:g}°",
-        "color": item.color or "",
         "notes": item.notes or "",
     }
     if isinstance(item, FurnitureItem):
@@ -76,23 +73,17 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
         case "x" | "y":
             return {key: _coordinate(text, unit, label)}
         case "rotation":
-            try:
-                return {"rotation": float(text.removesuffix("°").replace(",", "."))}
-            except ValueError:
-                raise EditError(f"{label}: enter an angle in degrees, such as 90.") from None
+            return {"rotation": parse_angle(text, label)}
         case "width" | "depth":
             size = box_size(item.shape)
             if size is None:
                 raise EditError(f"{label}: this shape is sized by its corners.")
             length = parse_length(text, unit)
-            if length is None or length <= 0:
+            # parse_length never returns a negative, so `== 0` is the same as `<= 0`.
+            if length is None or length <= 0:  # pragma: no mutate
                 raise EditError(f"{label}: enter a length greater than 0, such as 120 or 1.2 m.")
-            width, depth = (length, size[1]) if key == "width" else (size[0], length)
+            width, depth = {"width": (length, size[1]), "depth": (size[0], length)}[key]
             return {"shape": with_box_size(item.shape, width, depth)}
-        case "color":
-            if text and not _COLOR.match(text):
-                raise EditError(f"{label}: enter a colour such as #a0b0c0, or leave it empty.")
-            return {"color": text or None}
         case "clearance":
             if not text:
                 return {"clearance": None}
@@ -100,9 +91,10 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
             if length is None:
                 raise EditError(f"{label}: enter a length such as 60, or leave it empty.")
             return {"clearance": length}
+        case "price":
+            return {"meta": _meta(item, key, _price(text, label))}
         case _:
-            assert isinstance(item, FurnitureItem)
-            return {"meta": _meta(item, key, text, label)}
+            return {"meta": _meta(item, key, text or None)}
 
 
 def _coordinate(text: str, unit: Unit, label: str) -> float:
@@ -113,14 +105,19 @@ def _coordinate(text: str, unit: Unit, label: str) -> float:
     return -length if negative else length
 
 
-def _meta(item: FurnitureItem, key: str, text: str, label: str) -> FurnitureMeta | None:
-    value: str | float | None = text or None
-    if key == "price" and text:
-        try:
-            value = float(text.replace(",", "."))
-        except ValueError:
-            raise EditError(f"{label}: enter an amount such as 499, or leave it empty.") from None
-        if value < 0:
-            raise EditError(f"{label}: enter an amount of 0 or more.")
+def _price(text: str, label: str) -> float | None:
+    if not text:
+        return None
+    try:
+        price = float(text.replace(",", "."))
+    except ValueError:
+        raise EditError(f"{label}: enter an amount such as 499, or leave it empty.") from None
+    if price < 0:
+        raise EditError(f"{label}: enter an amount of 0 or more.")
+    return price
+
+
+def _meta(item: Placed, key: str, value: str | float | None) -> FurnitureMeta | None:
+    assert isinstance(item, FurnitureItem)
     meta = (item.meta or FurnitureMeta()).evolve(**{key: value})
     return None if meta == FurnitureMeta() else meta

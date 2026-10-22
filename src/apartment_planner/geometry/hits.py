@@ -4,7 +4,7 @@ Tolerances are in cm; the canvas converts a fixed distance on screen.
 """
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from shapely.geometry import Point as ShapelyPoint
 from shapely.geometry import box
@@ -36,11 +36,18 @@ def edge_at(room: Room, point: XY, tolerance: float) -> str | None:
 
 def room_at(rooms: Sequence[Room], point: XY) -> str | None:
     """The ID of the topmost (last drawn) room containing `point`, edges included."""
-    target = ShapelyPoint(point)
-    for room in reversed(rooms):
-        if room_polygon(room).covers(target):
-            return room.id
-    return None
+    return room_locator(rooms)(point)
+
+
+def room_locator(rooms: Sequence[Room]) -> Callable[[XY], str | None]:
+    """`room_at` for many points: the room polygons are built once."""
+    floors = [(room.id, room_polygon(room)) for room in reversed(rooms)]
+
+    def locate(point: XY) -> str | None:
+        target = ShapelyPoint(point)
+        return next((room_id for room_id, floor in floors if floor.covers(target)), None)
+
+    return locate
 
 
 def rect_outline(a: XY, b: XY) -> list[XY]:

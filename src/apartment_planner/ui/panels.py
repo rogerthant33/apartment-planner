@@ -19,26 +19,34 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from apartment_planner.canvas import style
 from apartment_planner.geometry.polygon import edge_lengths
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.model import FurnitureItem, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import selected_openings
 from apartment_planner.state.placed import selected_placed
 from apartment_planner.state.rooms import (
+    recolour_room,
     rename_room,
     selected_room,
+    selected_rooms,
     set_edge_length,
 )
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
-from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.background_panel import BackgroundBox
+from apartment_planner.ui.colour_button import ColourButton
+from apartment_planner.ui.furniture_panel import (
+    FurniturePage,
+    RoomsPage,
+    SelectionPage,
+    tool_buttons,
+)
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 from apartment_planner.ui.opening_panel import OpeningPage
 
 ROOM_ID = Qt.ItemDataRole.UserRole  # the ID of a list entry's room or item
@@ -66,7 +74,7 @@ class ToolsPanel(QWidget):
         self.layouts.activated.connect(lambda i: self.layout_chosen.emit(self.layouts.itemData(i)))
         layout_row = QHBoxLayout()
         layout_row.addWidget(self.layouts, 1)
-        layout_row.addLayout(_buttons(layout_actions))
+        layout_row.addLayout(tool_buttons(layout_actions))
         self.rooms = QListWidget()
         self.rooms.itemClicked.connect(lambda item: self.room_activated.emit(item.data(ROOM_ID)))
         self.furniture = QListWidget()
@@ -76,11 +84,11 @@ class ToolsPanel(QWidget):
         layout.addWidget(QLabel("Layout"))
         layout.addLayout(layout_row)
         layout.addWidget(QLabel("Tools"))
-        layout.addLayout(_buttons(tool_actions))
+        layout.addLayout(tool_buttons(tool_actions))
         layout.addWidget(QLabel("Add to the apartment (unlock it first)"))
-        layout.addLayout(_buttons(apartment_actions))
+        layout.addLayout(tool_buttons(apartment_actions))
         layout.addWidget(QLabel("Add furniture"))
-        layout.addLayout(_buttons(add_actions))
+        layout.addLayout(tool_buttons(add_actions))
         layout.addWidget(QLabel("Rooms"))
         layout.addWidget(self.rooms, 1)
         layout.addWidget(QLabel("Furniture (untick to hide)"))
@@ -112,17 +120,6 @@ class ToolsPanel(QWidget):
     def _furniture_clicked(self, item: QListWidgetItem) -> None:
         if item.checkState() == Qt.CheckState.Checked:
             self.furniture_activated.emit(item.data(ROOM_ID))
-
-
-def _buttons(actions: list[QAction]) -> QHBoxLayout:
-    row = QHBoxLayout()
-    for action in actions:
-        button = QToolButton()
-        button.setDefaultAction(action)
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        row.addWidget(button)
-    row.addStretch()
-    return row
 
 
 def _sync_list(
@@ -161,6 +158,8 @@ class RoomPage(QWidget):
         self.name = QLineEdit()
         self.name.editingFinished.connect(self._rename)
         self.area = QLabel()
+        self.colour = ColourButton(lambda: style.colours.room_fill)
+        self.colour.chosen.connect(self._set_colour)
         self.edges: list[QLineEdit] = []
         self._edge_form = QFormLayout()
         self.error = error_label()
@@ -174,6 +173,7 @@ class RoomPage(QWidget):
         form = QFormLayout()
         form.addRow("Name", self.name)
         form.addRow("Area", self.area)
+        form.addRow("Colour", self.colour)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(QLabel("Edge lengths"))
@@ -194,8 +194,9 @@ class RoomPage(QWidget):
             self._rebuild_edges(len(lengths))
         for field, length in zip(self.edges, lengths, strict=True):
             field.setText(format_length(length, unit))
-        for widget in (self.name, *self.edges, self.duplicate, self.delete):
+        for widget in (self.name, *self.edges, self.duplicate, self.delete, self.colour):
             widget.setEnabled(editable)
+        self.colour.show_colour(room.color)
 
     def _rebuild_edges(self, count: int) -> None:
         for field in self.edges:
@@ -219,6 +220,11 @@ class RoomPage(QWidget):
         if room is not None and self.state is not None and self.name.text() != room.name:
             self._commit(lambda doc: rename_room(doc, room.id, self.name.text()))
 
+    def _set_colour(self, colour: str | None) -> None:
+        room = self._room()
+        if room is not None and self.state is not None:
+            self._commit(lambda doc: recolour_room(doc, room.id, colour))
+
     def _set_length(self, i: int) -> None:
         room = self._room()
         if room is None or self.state is None:
@@ -237,27 +243,28 @@ class RoomPage(QWidget):
 
     def _commit(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         assert self.state is not None
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            self._reject(str(error))
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        commit_or_refuse(self.state, self.error, change, self._refresh)
 
     def _reject(self, message: str) -> None:
-        """Inline refusal: the fields go back to the document's values."""
         show_error(self.error, message)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """Put the fields back to the document's values."""
         room = self._room()
         if room is not None and self.state is not None:
             self.show_room(self.state, room, self.editable)
 
 
 class SettingsPage(QWidget):
-    """Project settings, shown when nothing is selected. Not part of undo."""
+    """Project settings, shown when nothing is selected. Not part of undo.
+
+    The background image controls below them are: the image is part of the plan.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.background = BackgroundBox()
         self.state: EditorState | None = None
         self.unit = QComboBox()
         self.unit.addItems(list(UNITS))
@@ -279,9 +286,11 @@ class SettingsPage(QWidget):
         layout.addWidget(QLabel("Project settings"))
         layout.addLayout(form)
         layout.addWidget(self.error)
+        layout.addWidget(self.background)
         layout.addStretch()
 
     def show_settings(self, state: EditorState, editable: bool) -> None:
+        self.background.show_background(state, editable)
         self.state = None  # don't write back while filling the fields
         settings = state.doc.settings
         self.unit.setCurrentText(settings.display_unit)
@@ -335,12 +344,14 @@ class PropertiesPanel(QStackedWidget):
         self.room_page = RoomPage()
         self.furniture_page = FurniturePage()
         self.selection_page = SelectionPage()
+        self.rooms_page = RoomsPage()
         self.opening_page = OpeningPage()
         for page in (
             self.settings_page,
             self.room_page,
             self.furniture_page,
             self.selection_page,
+            self.rooms_page,
             self.opening_page,
         ):
             self.addWidget(page)
@@ -350,6 +361,7 @@ class PropertiesPanel(QStackedWidget):
         placed = selected_placed(doc, state.selection)
         openings = selected_openings(doc, state.selection)
         room = selected_room(doc, state.selection)
+        rooms = selected_rooms(doc, state.selection)
         # Obstacles and openings belong to the apartment, which may be locked.
         apartment = editable and not doc.settings.apartment_locked
         if placed and not isinstance(placed[0], FurnitureItem):
@@ -360,6 +372,9 @@ class PropertiesPanel(QStackedWidget):
         elif placed:
             self.furniture_page.show_item(state, placed[0], editable)
             self.setCurrentWidget(self.furniture_page)
+        elif len(rooms) > 1:
+            self.rooms_page.show_rooms(rooms, apartment)
+            self.setCurrentWidget(self.rooms_page)
         elif openings:
             self.opening_page.show_opening(state, openings[0], apartment)
             self.setCurrentWidget(self.opening_page)

@@ -5,10 +5,12 @@ right of its direction: the inward normal of (dx, dy) is (-dy, dx).
 """
 
 import math
+from collections.abc import Sequence
+from typing import NamedTuple
 
 from shapely.geometry import Polygon
 
-from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
+from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS, EPS
 from apartment_planner.geometry.snapping import nearest_on_segment
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Room
@@ -21,7 +23,8 @@ def edge(room: Room, start_vertex_id: str) -> tuple[XY, XY]:
     vertices = room.vertices
     for i, vertex in enumerate(vertices):
         if vertex.id == start_vertex_id:
-            end = vertices[(i + 1) % len(vertices)]
+            # `- len` instead of `%` would index the same vertex from the end.
+            end = vertices[(i + 1) % len(vertices)]  # pragma: no mutate
             return (vertex.x, vertex.y), (end.x, end.y)
     raise KeyError(start_vertex_id)
 
@@ -55,15 +58,20 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
     if opening.door is None:
         raise ValueError("Only doors swing")
     start, end = opening_span(room, opening)
-    hinge, tip = (start, end) if opening.door.hinge == "start" else (end, start)
+    # pragmas below: hinge and swing are validated Literals, which pydantic returns as
+    # the literal objects themselves, and "end" < "start", "in" < "out". So `is` and
+    # `>=` mutants behave the same.
+    hinged_at_start = opening.door.hinge == "start"  # pragma: no mutate
+    hinge, tip = (start, end) if hinged_at_start else (end, start)
     nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))
-    if opening.door.swing == "out":
+    if opening.door.swing == "out":  # pragma: no mutate
         nx, ny = -nx, -ny
     closed = (tip[0] - hinge[0], tip[1] - hinge[1])  # the leaf lying in the doorway
     radius = opening.width
     opened = (nx * radius, ny * radius)
     arc = []
-    for i in range(ARC_SEGMENTS + 1):
+    # ARC_SEGMENTS is even, so `| 1` and `^ 1` mutants equal `+ 1`.
+    for i in range(ARC_SEGMENTS + 1):  # pragma: no mutate
         t = math.pi / 2 * i / ARC_SEGMENTS
         arc.append(
             (
@@ -72,6 +80,66 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
             )
         )
     return Polygon([hinge, *arc])
+
+
+def wall_pieces(
+    room: Room, openings: Sequence[Opening], start_vertex_id: str
+) -> list[tuple[float, float]]:
+    """An edge split by its openings into wall and opening pieces, in order along
+    it: (from, to) in cm from the edge start. Empty if no opening is on the edge.
+
+    Openings are clamped to the edge, and ones that overlap are taken as one.
+    """
+    a, b = edge(room, start_vertex_id)
+    length = math.dist(a, b)
+    spans = sorted(
+        (max(o.offset - o.width / 2, 0.0), min(o.offset + o.width / 2, length))
+        for o in openings
+        if o.room_id == room.id and o.edge_start_vertex_id == start_vertex_id
+    )
+    merged: list[tuple[float, float]] = []
+    for span_start, span_end in spans:
+        if merged and span_start < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], span_end))
+        else:
+            merged.append((span_start, span_end))
+    pieces: list[tuple[float, float]] = []
+    cursor = 0.0
+    for span_start, span_end in merged:
+        if span_start > cursor + EPS:
+            pieces.append((cursor, span_start))
+        pieces.append((span_start, span_end))
+        cursor = span_end
+    if merged and cursor < length - EPS:
+        pieces.append((cursor, length))
+    return pieces
+
+
+class Dimension(NamedTuple):
+    """A length to label: where (the middle of what it measures), and which way to
+    move the label off the wall line, as a unit vector ((0, 0): on the line)."""
+
+    anchor: XY
+    length: float
+    side: XY
+
+
+def edge_dimensions(room: Room, openings: Sequence[Opening]) -> list[Dimension]:
+    """Each edge's length, in edge order. An edge with openings also gets the lengths
+    it's split into, just inside the room, and its full length moves just outside."""
+    dimensions = []
+    for vertex in room.vertices:
+        a, b = edge(room, vertex.id)
+        pieces = wall_pieces(room, openings, vertex.id)
+        nx, ny = inward_normal(a, b)
+        middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        dimensions.append(Dimension(middle, math.dist(a, b), (-nx, -ny) if pieces else (0, 0)))
+        dx, dy = _unit(a, b)
+        for start, end in pieces:
+            along = (start + end) / 2
+            anchor = (a[0] + dx * along, a[1] + dy * along)
+            dimensions.append(Dimension(anchor, end - start, (nx, ny)))
+    return dimensions
 
 
 def nearest_edge(rooms: list[Room], point: XY, tolerance: float) -> tuple[Room, str, float] | None:

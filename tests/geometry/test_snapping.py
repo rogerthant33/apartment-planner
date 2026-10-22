@@ -8,6 +8,7 @@ from apartment_planner.geometry.snapping import (
     room_targets,
     snap,
     snap_move,
+    snap_room_move,
 )
 from tests.factories import rect_item, rect_room
 
@@ -79,8 +80,12 @@ def test_nearest_on_a_zero_length_segment_is_its_point() -> None:
     assert nearest_on_segment((5, 5), (1, 1), (1, 1)) == (1, 1)
 
 
-WALL = ((0.0, 0.0), (0.0, 400.0))
-SOFA_CORNERS = [(10.0, 100.0), (210.0, 100.0), (210.0, 190.0), (10.0, 190.0)]
+# A room's left and top walls, and a sofa 10 cm from the left one and 2 cm from the
+# top one, with its origin off the grid.
+WALL = ((3.0, 0.0), (3.0, 400.0))
+TOP_WALL = ((0.0, 100.0), (400.0, 100.0))
+SOFA_CORNERS = [(13.0, 102.0), (213.0, 102.0), (213.0, 192.0), (13.0, 192.0)]
+SOFA_ORIGIN = (113.0, 147.0)
 
 
 @pytest.mark.parametrize(
@@ -88,24 +93,40 @@ SOFA_CORNERS = [(10.0, 100.0), (210.0, 100.0), (210.0, 190.0), (10.0, 190.0)]
     [
         ((-6, 3), (-10, 3)),  # a corner 4 cm from the wall: flush against it
         ((-5, 3), (-10, 3)),  # exactly at the tolerance
-        ((-4, 3), (0, 5)),  # just outside it: the origin lands on the grid
+        ((-4, -3), (-3, -7)),  # just outside it: the origin lands on the grid
     ],
 )
 def test_moves_snap_flush_to_walls_before_the_grid(
     delta: tuple[float, float], expected: tuple[float, float]
 ) -> None:
-    result = snap_move(SOFA_CORNERS, (110, 145), delta, [WALL], grid=10, tolerance=5)
+    result = snap_move(SOFA_CORNERS, SOFA_ORIGIN, delta, [WALL], grid=10, tolerance=5)
 
     assert result == pytest.approx(expected)
 
 
 def test_moves_snap_to_the_nearest_edge_and_stay_free_without_a_grid() -> None:
-    near = ((216.0, 0.0), (216.0, 400.0))  # 7 cm from the moved sofa; the wall is 9 cm away
+    near = ((219.0, 0.0), (219.0, 400.0))  # 7 cm from the moved sofa; the wall is 9 cm away
 
-    assert snap_move(SOFA_CORNERS, (110, 145), (-1, 0), [WALL, near], grid=None, tolerance=10) == (
+    assert snap_move(SOFA_CORNERS, SOFA_ORIGIN, (-1, 0), [WALL, near], grid=None, tolerance=10) == (
         pytest.approx((6, 0))
     )
-    assert snap_move(SOFA_CORNERS, (110, 145), (40, 7), [WALL], grid=None, tolerance=5) == (40, 7)
+    assert snap_move(SOFA_CORNERS, SOFA_ORIGIN, (40, 7), [WALL], grid=None, tolerance=5) == (40, 7)
+
+
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        ((-7, 2), (-10, 2)),  # 3 cm from the left wall, 4 cm from the top one
+        ((-6, 1), (-6, -2)),  # 4 cm from the left wall, 3 cm from the top one
+        ((-7, 1), (-7, -2)),  # 3 cm from both: the first edge listed wins
+    ],
+)
+def test_moves_into_a_corner_snap_flush_to_the_nearer_wall(
+    delta: tuple[float, float], expected: tuple[float, float]
+) -> None:
+    result = snap_move(SOFA_CORNERS, SOFA_ORIGIN, delta, [TOP_WALL, WALL], grid=None, tolerance=5)
+
+    assert result == pytest.approx(expected)
 
 
 def test_placed_edges_follow_the_rotated_footprint() -> None:
@@ -113,3 +134,24 @@ def test_placed_edges_follow_the_rotated_footprint() -> None:
 
     (start, end), *_ = placed_edges([sofa])
     assert (*start, *end) == pytest.approx((145, 0, 145, 200))
+
+
+NEIGHBOUR = room_targets([rect_room(400, 0, 300, 300)])  # x 400..700, y 0..300
+MOVING = [(0.0, 0.0), (200.0, 0.0), (200.0, 100.0), (0.0, 100.0)]
+
+
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        ((195, 3), (200, 0)),  # corner to corner beats flush along the edge
+        ((195, 50), (200, 50)),  # flush against the neighbour's left wall
+        ((189.9, 50), (190, 50)),  # just out of reach (10 cm): to the grid instead
+        ((-33, 47), (-30, 50)),
+    ],
+)
+def test_room_moves_snap_to_corners_then_walls_then_the_grid(
+    delta: tuple[float, float], expected: tuple[float, float]
+) -> None:
+    moved = snap_room_move(MOVING, delta, NEIGHBOUR, grid=10, tolerance=10)
+
+    assert moved == pytest.approx(expected)

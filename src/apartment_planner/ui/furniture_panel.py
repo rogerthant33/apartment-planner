@@ -2,6 +2,8 @@
 
 from collections.abc import Callable
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -9,13 +11,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc
+from apartment_planner.canvas import style
+from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
     set_locked,
     set_shape_edge_length,
@@ -24,7 +27,20 @@ from apartment_planner.state.furniture import (
 from apartment_planner.state.furniture_fields import FIELDS, field_values, parse_field
 from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.colour_button import ColourButton
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
+
+
+def tool_buttons(actions: list[QAction]) -> QHBoxLayout:
+    """A row of text buttons for the window's actions."""
+    row = QHBoxLayout()
+    for action in actions:
+        button = QToolButton()
+        button.setDefaultAction(action)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        row.addWidget(button)
+    row.addStretch()
+    return row
 
 
 def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
@@ -52,11 +68,24 @@ class FurniturePage(QWidget):
         self.fields: dict[str, QLineEdit] = {}
         form = QFormLayout()
         self._form = form
+        self.colour = ColourButton(lambda: style.colours.furniture_fill)
+        self.colour.chosen.connect(self._set_colour)
         for key, label in FIELDS.items():
             field = QLineEdit()
             field.editingFinished.connect(lambda key=key: self._commit_field(key))
             form.addRow(label, field)
             self.fields[key] = field
+            if key == "depth":
+                form.addRow("Colour", self.colour)
+        clearance = self.fields["clearance"]
+        clearance.setPlaceholderText("None")
+        tip = (
+            "Space to keep free around this item, such as 60 cm in front of a wardrobe "
+            "or around a dining table. Anything closer is listed in Fit Checks. "
+            "Leave it empty for none."
+        )
+        clearance.setToolTip(tip)
+        form.labelForField(clearance).setToolTip(tip)
         self.title = QLabel()
         self.room = QLabel()
         form.addRow("Room", self.room)
@@ -85,15 +114,14 @@ class FurniturePage(QWidget):
         doc = state.doc
         values = field_values(item, doc.settings.display_unit)
         for key, field in self.fields.items():
-            visible = key in values
-            field.setVisible(visible)
-            self._form.labelForField(field).setVisible(visible)
+            self._form.setRowVisible(field, key in values)
             field.setText(values.get(key, ""))
             field.setEnabled(editable)
+        self.colour.setEnabled(editable)
+        self.colour.show_colour(item.color)
         furniture = isinstance(item, FurnitureItem)
         self.title.setText("Furniture" if furniture else "Obstacle (part of the apartment)")
-        self.room.setVisible(furniture)
-        self._form.labelForField(self.room).setVisible(furniture)
+        self._form.setRowVisible(self.room, furniture)
         self.locked.setVisible(furniture)
         locked = False
         if isinstance(item, FurnitureItem):
@@ -132,6 +160,11 @@ class FurniturePage(QWidget):
             return
         self._commit(lambda doc: update_placed(doc, item.id, **parse_field(item, key, text, unit)))
 
+    def _set_colour(self, colour: str | None) -> None:
+        item = self._item()
+        if item is not None:
+            self._commit(lambda doc: update_placed(doc, item.id, color=colour))
+
     def _set_locked(self, locked: bool) -> None:
         item = self._item()
         if isinstance(item, FurnitureItem) and item.locked != locked:
@@ -165,17 +198,14 @@ class FurniturePage(QWidget):
 
     def _commit(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         assert self.state is not None
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            self._reject(str(error))
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        commit_or_refuse(self.state, self.error, change, self._refresh)
 
     def _reject(self, message: str) -> None:
-        """Inline refusal: the fields go back to the document's values."""
         show_error(self.error, message)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """Put the fields back to the document's values."""
         item, state = self._item(), self.state
         if item is not None and state is not None:
             self.show_item(state, item, self.editable)
@@ -198,9 +228,7 @@ class SelectionPage(QWidget):
         layout.addStretch()
 
     def show_items(self, items: list[Placed], editable: bool) -> None:
-        names = ", ".join(item.name for item in items[:5])
-        more = f" and {len(items) - 5} more" if len(items) > 5 else ""
-        self.summary.setText(f"{len(items)} items selected: {names}{more}.")
+        self.summary.setText(_summary(len(items), "items", [item.name for item in items]))
         furniture = [i for i in items if isinstance(i, FurnitureItem)]  # obstacles: none
         grouped = {item.group_id for item in furniture}
         self.buttons["Group"].setEnabled(
@@ -211,3 +239,28 @@ class SelectionPage(QWidget):
         self.buttons["Unlock"].setEnabled(editable and any(i.locked for i in furniture))
         for label in ("Duplicate", "Delete"):
             self.buttons[label].setEnabled(editable)
+
+
+class RoomsPage(QWidget):
+    """Several selected rooms: drag one to move them all; they can be deleted together."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        row, self.buttons = action_buttons("Delete")
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.summary)
+        layout.addLayout(row)
+        layout.addStretch()
+
+    def show_rooms(self, rooms: list[Room], editable: bool) -> None:
+        names = [r.name for r in rooms]
+        self.summary.setText(_summary(len(rooms), "rooms", names) + " Drag one to move them all.")
+        self.buttons["Delete"].setEnabled(editable)
+
+
+def _summary(count: int, what: str, names: list[str]) -> str:
+    listed = ", ".join(names[:5])
+    more = f" and {count - 5} more" if count > 5 else ""
+    return f"{count} {what} selected: {listed}{more}."

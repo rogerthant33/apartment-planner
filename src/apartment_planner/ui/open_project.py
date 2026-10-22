@@ -1,14 +1,14 @@
 """The project open in the window: its editor state, file session and autosave."""
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
 from apartment_planner.canvas.signals import EditorSignals
-from apartment_planner.model import ProjectDoc
+from apartment_planner.model import ProjectDoc, new_id
 from apartment_planner.persistence.archive import ProjectFile
 from apartment_planner.persistence.autosave import SaveStatus
 from apartment_planner.persistence.autosaver import Autosaver
@@ -64,6 +64,18 @@ class OpenProject(QObject):
     @property
     def path(self) -> Path:
         return self.session.path
+
+    @property
+    def assets(self) -> Mapping[str, bytes]:
+        """Images by asset ID. Only those the document refers to are saved, so undo
+        can bring back an earlier background."""
+        return self._assets
+
+    def add_asset(self, data: bytes) -> str:
+        """Keep an image's bytes with the project; returns its new asset ID."""
+        asset_id = new_id()
+        self._assets[asset_id] = data
+        return asset_id
 
     @property
     def name(self) -> str:

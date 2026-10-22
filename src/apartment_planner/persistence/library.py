@@ -53,6 +53,12 @@ class InvalidNameError(ProjectFileError):
     pass
 
 
+def file_name_part(text: str) -> str:
+    """`text` made safe to use in a file name: characters that aren't allowed in
+    one on Windows or macOS become "-"."""
+    return "".join("-" if c in _FORBIDDEN_CHARACTERS or ord(c) < 32 else c for c in text)
+
+
 def project_name(path: Path) -> str:
     return path.name.removesuffix(SUFFIX)
 

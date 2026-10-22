@@ -32,6 +32,7 @@ from apartment_planner.geometry.snapping import (
     room_targets,
     snap,
     snap_move,
+    snap_room_move,
 )
 from apartment_planner.geometry.transform import XY, local_to_world_all, world_to_local
 from apartment_planner.model import (
@@ -41,6 +42,11 @@ from apartment_planner.model import (
     Point,
     PolygonShape,
     ProjectDoc,
+)
+from apartment_planner.state.background import (
+    background_corners,
+    move_background,
+    require_unlocked,
 )
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
@@ -65,11 +71,13 @@ from apartment_planner.state.rooms import (
     add_room,
     drawn_outline,
     insert_vertex,
+    move_rooms,
     move_vertex,
     moved_vertices,
     outline_problem,
     room,
     selected_room,
+    selected_rooms,
 )
 from apartment_planner.state.units import Unit, format_length
 
@@ -81,6 +89,12 @@ class Pointer:
     snapping: bool  # snapping is on and Alt isn't held
     alt: bool = False
     shift: bool = False
+    ctrl: bool = False  # Cmd on macOS
+
+    @property
+    def adds(self) -> bool:
+        """Shift or Ctrl: add to (or take from) the selection instead of replacing it."""
+        return self.shift or self.ctrl
 
 
 class Host(Protocol):
@@ -96,6 +110,10 @@ class Host(Protocol):
     def hidden(self) -> frozenset[str]: ...
     def can_edit_rooms(self) -> bool: ...
     def notify(self, message: str) -> None: ...
+    def background_size(self) -> tuple[int, int] | None: ...
+    def ask_calibration(self, a: XY, b: XY) -> None: ...
+    def finished(self) -> None:
+        """A drawing tool made its thing: go back to the select tool."""
 
 
 def footprint(item: Placed) -> list[XY]:
@@ -114,6 +132,7 @@ def segment_labels(points: Sequence[XY], unit: Unit, closed: bool) -> list[tuple
 
 class Tool:
     cursor = Qt.CursorShape.ArrowCursor
+    needs_apartment = False  # True: it edits the apartment, so it needs it unlocked
 
     def __init__(self, host: Host) -> None:
         self.host = host
@@ -177,7 +196,7 @@ class Tool:
 
 @dataclass
 class _Drag:
-    kind: str  # "room_vertex", "move", "resize", "rotate", "corner" or "band"
+    kind: str  # "room_vertex", "rooms", "move", "resize", "rotate", "corner" or "band"
     start: XY
     ids: frozenset[str] = frozenset()
     room_id: str = ""
@@ -233,13 +252,27 @@ class SelectTool(Tool):
         if hit is not None:
             self._press_placed(hit, pointer)
             return
-        room_id = None if doc.settings.apartment_locked else room_at(doc.apartment.rooms, pos)
+        locked = doc.settings.apartment_locked
+        room_id = None if locked else room_at(doc.apartment.rooms, pos)
         if room_id is not None:
-            state.select({room_id})
+            self._press_room(room_id, pointer)
             return
-        if not pointer.shift:
+        if not pointer.adds:
             state.select(())
         self._drag = _Drag("band", pos)
+
+    def _press_room(self, room_id: str, pointer: Pointer) -> None:
+        """Select a room (Shift or Ctrl adds rooms) and start moving the selected rooms."""
+        state = self.host.state
+        rooms = frozenset(r.id for r in selected_rooms(self.doc, state.selection))
+        if pointer.adds:
+            state.select(rooms - {room_id} if room_id in rooms else rooms | {room_id})
+            return
+        if room_id not in rooms:
+            rooms = frozenset({room_id})
+            state.select(rooms)
+        if self.can_edit_rooms():  # a read-only project only selects
+            self._drag = _Drag("rooms", pointer.pos, ids=rooms)
 
     def _reshapeable(self, item: Placed) -> bool:
         if isinstance(item, FurnitureItem):
@@ -259,7 +292,7 @@ class SelectTool(Tool):
             for i in selected_placed(doc, state.selection)
             if is_obstacle(doc, i.id) == obstacle
         )
-        if pointer.shift:
+        if pointer.adds:
             state.select(selected - group if hit in selected else selected | group)
             return
         if hit not in selected:
@@ -285,6 +318,8 @@ class SelectTool(Tool):
             )
         elif drag.kind == "move":
             self._move_preview(drag, pointer)
+        elif drag.kind == "rooms":
+            self._rooms_preview(drag, pointer)
         elif drag.kind == "opening":
             self._opening_preview(drag, pointer)
         else:
@@ -306,6 +341,26 @@ class SelectTool(Tool):
         moved = opening_of(drag.result(), opening_id)
         span = opening_span(room(self.doc, moved.room_id), moved)
         self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
+
+    def _rooms_preview(self, drag: _Drag, pointer: Pointer) -> None:
+        delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
+        if drag.result is None and math.hypot(*delta) < style.DRAG_PX * pointer.cm_per_px:
+            return  # still a click: a little jitter mustn't move a room
+        rooms = selected_rooms(self.doc, drag.ids)
+        corners = [(v.x, v.y) for r in rooms for v in r.vertices]
+        if pointer.snapping:
+            others = [r for r in self.doc.apartment.rooms if r.id not in drag.ids]
+            delta = snap_room_move(
+                corners,
+                delta,
+                room_targets(others),
+                grid=self.doc.settings.grid_size,
+                tolerance=style.SNAP_PX * pointer.cm_per_px,
+            )
+        dx, dy = delta
+        outlines = [[(v.x + dx, v.y + dy) for v in r.vertices] for r in rooms]
+        drag.result = lambda: move_rooms(self.doc, drag.ids, delta)
+        self.host.plan.preview.show_outlines(outlines, closed=True, valid=True)
 
     def _move_preview(self, drag: _Drag, pointer: Pointer) -> None:
         items = selected_placed(self.doc, drag.ids)
@@ -372,7 +427,7 @@ class SelectTool(Tool):
         if drag.kind == "band":
             if drag.end is not None:
                 touched = placed_in_rect(self.visible_furniture(), drag.start, drag.end)
-                keep = self.host.state.selection if pointer.shift else frozenset()
+                keep = self.host.state.selection if pointer.adds else frozenset()
                 self.host.state.select(keep | with_groups(self.doc, touched))
             return
         if drag.result is None:  # a click, not a drag
@@ -419,6 +474,7 @@ class OpeningTool(Tool):
     """Click near a wall to put a door, window or plain opening there."""
 
     cursor = Qt.CursorShape.CrossCursor
+    needs_apartment = True
 
     def __init__(self, host: Host, kind: OpeningKind) -> None:
         super().__init__(host)
@@ -456,12 +512,89 @@ class OpeningTool(Tool):
         doc, opening_id = place()
         self.cancel()
         self.commit(doc, select=frozenset({opening_id}))
+        self.host.finished()
+
+
+class BackgroundTool(Tool):
+    """Drag the background image into place."""
+
+    cursor = Qt.CursorShape.SizeAllCursor
+
+    def __init__(self, host: Host) -> None:
+        super().__init__(host)
+        self._start: XY | None = None
+        self._delta: XY | None = None
+
+    def press(self, pointer: Pointer) -> None:
+        if self.doc.background is None or not self.host.editable:
+            return
+        try:
+            require_unlocked(self.doc, "move it")
+        except EditError as error:
+            self.host.notify(str(error))
+            return
+        self._start = pointer.pos
+
+    def move(self, pointer: Pointer) -> None:
+        bg, size = self.doc.background, self.host.background_size()
+        if self._start is None or bg is None or size is None:
+            return
+        self._delta = dx, dy = (pointer.pos[0] - self._start[0], pointer.pos[1] - self._start[1])
+        moved = [(x + dx, y + dy) for x, y in background_corners(bg, size)]
+        self.host.plan.preview.show_outline(moved, closed=True, valid=True)
+
+    def release(self, pointer: Pointer) -> None:
+        delta = self._delta
+        self.cancel()
+        if delta is not None:
+            self.attempt(lambda: move_background(self.doc, delta))
+
+    def cancel(self) -> None:
+        self._start = self._delta = None
+        super().cancel()
+
+
+class CalibrateTool(Tool):
+    """Click two points on the background image; then the real distance is asked for."""
+
+    cursor = Qt.CursorShape.CrossCursor
+
+    def __init__(self, host: Host) -> None:
+        super().__init__(host)
+        self._first: XY | None = None
+
+    def press(self, pointer: Pointer) -> None:
+        if self.doc.background is None or not self.host.editable:
+            return
+        if self._first is None:
+            self._first = pointer.pos
+            return
+        first = self._first
+        self.cancel()
+        self.host.ask_calibration(first, pointer.pos)
+
+    def move(self, pointer: Pointer) -> None:
+        if self._first is not None:
+            line = [self._first, pointer.pos]
+            labels = segment_labels(line, self.doc.settings.display_unit, closed=False)
+            self.host.plan.preview.show_outline(line, closed=False, valid=True, labels=labels)
+
+    def key(self, key: int) -> bool:
+        if key == Qt.Key.Key_Escape and self._first is not None:
+            self.cancel()
+            return True
+        return False
+
+    def cancel(self) -> None:
+        self._first = None
+        super().cancel()
 
 
 class RectRoomTool(Tool):
     """Drag out a rectangular room."""
 
     cursor = Qt.CursorShape.CrossCursor
+    needs_apartment = True
 
     def __init__(self, host: Host) -> None:
         super().__init__(host)
@@ -492,6 +625,7 @@ class RectRoomTool(Tool):
             self.host.notify(str(error))
             return
         self.commit(doc, select=frozenset({room_id}))
+        self.host.finished()
 
     def key(self, key: int) -> bool:
         if key == Qt.Key.Key_Escape and self._start is not None:
@@ -507,19 +641,17 @@ class RectRoomTool(Tool):
 class PolygonTool(Tool):
     """Click corners; close on the first corner or with Enter. Escape cancels.
 
-    Draws a room while the apartment is unlocked, and a custom furniture shape
-    while it is locked.
+    Draws a room (only while the apartment is unlocked) or a custom-shaped piece
+    of furniture.
     """
 
     cursor = Qt.CursorShape.CrossCursor
 
-    def __init__(self, host: Host) -> None:
+    def __init__(self, host: Host, *, furniture: bool) -> None:
         super().__init__(host)
+        self.draws_furniture = furniture
+        self.needs_apartment = not furniture
         self.points: list[XY] = []
-
-    @property
-    def draws_furniture(self) -> bool:
-        return self.doc.settings.apartment_locked
 
     def press(self, pointer: Pointer) -> None:
         if not (self.host.editable and (self.draws_furniture or self.can_edit_rooms())):
@@ -564,6 +696,7 @@ class PolygonTool(Tool):
             return
         self.cancel()
         self.commit(doc, select=frozenset({new_id}))
+        self.host.finished()
 
     def cancel(self) -> None:
         self.points = []
