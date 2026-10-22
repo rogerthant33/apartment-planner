@@ -81,6 +81,8 @@ class PlanScene(QGraphicsScene):
             self.background = BackgroundItem(doc.background, background)
             self.addItem(self.background)
         handles = editable and not doc.settings.apartment_locked
+        # Corners can be dragged on one room at a time; several selected rooms move.
+        one_room = sum(room.id in selection for room in doc.apartment.rooms) == 1
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -90,7 +92,7 @@ class PlanScene(QGraphicsScene):
                 selected=selected,
                 dimensions=dimensions,
                 openings=doc.apartment.openings,
-                handles=selected and handles,
+                handles=selected and handles and one_room,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
             )

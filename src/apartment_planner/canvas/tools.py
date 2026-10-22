@@ -247,7 +247,8 @@ class SelectTool(Tool):
         if hit is not None:
             self._press_placed(hit, pointer)
             return
-        room_id = room_at(doc.apartment.rooms, pos) if self.can_edit_rooms() else None
+        locked = doc.settings.apartment_locked
+        room_id = None if locked else room_at(doc.apartment.rooms, pos)
         if room_id is not None:
             self._press_room(room_id, pointer)
             return
@@ -265,7 +266,8 @@ class SelectTool(Tool):
         if room_id not in rooms:
             rooms = frozenset({room_id})
             state.select(rooms)
-        self._drag = _Drag("rooms", pointer.pos, ids=rooms)
+        if self.can_edit_rooms():  # a read-only project only selects
+            self._drag = _Drag("rooms", pointer.pos, ids=rooms)
 
     def _reshapeable(self, item: Placed) -> bool:
         if isinstance(item, FurnitureItem):

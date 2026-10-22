@@ -37,7 +37,12 @@ class BackgroundBox(QGroupBox):
         self._buttons.addStretch()
         self.opacity = QSlider(Qt.Orientation.Horizontal)
         self.opacity.setRange(0, 100)
+        # Dragging commits once, on release; keys, the wheel and clicks on the track
+        # commit each step.
         self.opacity.sliderReleased.connect(self._set_opacity)
+        self.opacity.valueChanged.connect(
+            lambda _: None if self.opacity.isSliderDown() else self._set_opacity()
+        )
         self.rotation = QLineEdit()
         self.rotation.editingFinished.connect(self._set_rotation)
         self.visible = QCheckBox("Shown")

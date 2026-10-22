@@ -31,7 +31,18 @@ def test_fitting_scale_is_the_first_that_fits(
 
 @pytest.mark.parametrize(
     ("longest", "expected"),
-    [(0.5, 1), (1, 1), (1.9, 1), (2, 2), (4.99, 2), (5, 5), (99, 50), (100, 100), (250, 200)],
+    [
+        (0.5, 1),
+        (1, 1),
+        (1.9, 1),
+        (2, 2),
+        (4.99, 2),
+        (5, 5),
+        (99, 50),
+        (100, 100),
+        (250, 200),
+        (999.9999999999999, 500),  # log10 of it rounds to exactly 3
+    ],
 )
 def test_scale_bar_length_is_round(longest: float, expected: float) -> None:
     assert scale_bar_length(longest) == expected

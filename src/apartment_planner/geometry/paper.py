@@ -24,4 +24,6 @@ def scale_bar_length(longest_cm: float) -> float:
     and at least 1 cm."""
     longest = max(longest_cm, 1.0)
     power = 10.0 ** math.floor(math.log10(longest))
+    if power > longest:  # log10 rounds up just below a power of ten
+        power /= 10
     return next(step * power for step in (5, 2, 1) if step * power <= longest)

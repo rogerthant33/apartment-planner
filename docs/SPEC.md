@@ -125,7 +125,9 @@ after confirmation), Show in Folder, and changing the projects folder.
   room's corner, or else the rooms move flush against the nearest wall within
   10 px, or else the first corner lands on the grid. Alt suspends snapping. A
   press that moves less than 4 px is a click and moves nothing. Furniture
-  stays where it is (only its room assignment is updated).
+  stays where it is (only its room assignment is updated). Corner handles show
+  only while a single room is selected. A read-only project still selects
+  rooms but doesn't move them.
 
 ### Validation
 
@@ -406,7 +408,7 @@ to 10), the projects folder and window geometry are stored in `QSettings`.
   settings) replaces any earlier image. It arrives unlocked at 1 cm per pixel,
   centred in the view, and the Calibrate tool starts: click two points, then
   enter the distance (such as 3.5 m). Calibration scales the image about the
-  first point. The Move tool drags it while it's unlocked; rotation turns it
+  first point. The Move and Calibrate tools only work while it's unlocked; rotation turns it
   about its top-left corner. Image edits are undoable like any other change.
 - Only PNG, JPEG and WebP files are taken, recognised by their contents. The
   image is drawn under the rooms, included in zoom to fit, and left out of

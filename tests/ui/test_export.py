@@ -107,3 +107,8 @@ def test_export_dialog_reads_its_choices(qtbot: QtBot) -> None:
     choice = dialog.choice()
     assert (choice.format, choice.px_per_m, choice.warnings) == ("png", 300, True)
     assert dialog.paper.isHidden()
+
+
+def test_an_image_too_big_to_make_asks_for_a_lower_resolution(qtbot: QtBot, tmp_path: Path) -> None:
+    with pytest.raises(ExportError, match="Choose a lower resolution"):
+        export_png(flat(400_000), tmp_path / "plan.png", px_per_m=1000)

@@ -9,6 +9,8 @@ from typing import Literal
 
 from shapely.ops import nearest_points
 
+from apartment_planner.geometry.constants import EPS
+from apartment_planner.geometry.openings import inward_normal
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.transform import XY, rotate
 from apartment_planner.model import Placed, Room
@@ -78,12 +80,10 @@ def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | 
 
 
 def _reaches_inside(corners: list[XY], a: XY, b: XY) -> bool:
-    """True if some corner is on the inside (right-hand) side of the wall a-b, not
-    just on it or beyond it."""
-    nx, ny = -(b[1] - a[1]), b[0] - a[0]
-    # The tolerance absorbs rounding for corners on the wall; `>=` would differ only
-    # for a corner exactly 1e-9 off it.
-    return any((c[0] - a[0]) * nx + (c[1] - a[1]) * ny > 1e-9 for c in corners)  # pragma: no mutate
+    """True if some corner is more than EPS on the inside (right-hand) side of the
+    wall a-b: an item only touching a wall, or beyond it, isn't inside it."""
+    nx, ny = inward_normal(a, b)
+    return any((c[0] - a[0]) * nx + (c[1] - a[1]) * ny > EPS for c in corners)
 
 
 def _ray_hit(origin: XY, direction: XY, a: XY, b: XY) -> float | None:

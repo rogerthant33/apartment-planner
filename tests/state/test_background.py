@@ -127,3 +127,10 @@ def test_edits_without_an_image_are_refused() -> None:
     assert doc.background is None
     with pytest.raises(EditError, match="Import one first"):
         update_background(doc, opacity=1)
+
+
+def test_a_locked_image_is_not_calibrated() -> None:
+    doc = update_background(placed(), locked=True)
+
+    with pytest.raises(EditError, match="Unlock it to calibrate it"):
+        calibrate(doc, (0, 0), (100, 0), 350)

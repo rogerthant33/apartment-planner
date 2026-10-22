@@ -61,11 +61,13 @@ def export_png(doc: ProjectDoc, path: Path, px_per_m: float = 150, warnings: boo
     source = plan_rect(doc)
     per_cm = px_per_m / 100
     band = _band_height()
-    image = QImage(
-        round(source.width() * per_cm),
-        round(source.height() * per_cm + 2 * band),
-        QImage.Format.Format_RGB32,
-    )
+    width, height = round(source.width() * per_cm), round(source.height() * per_cm + 2 * band)
+    image = QImage(width, height, QImage.Format.Format_RGB32)
+    if image.isNull():  # too big to hold in memory
+        raise ExportError(
+            f"The image would be {width} by {height} pixels, too big to make. "
+            "Choose a lower resolution."
+        )
     image.fill(QColor("white"))
     painter = QPainter(image)
     target = QRectF(0, band, image.width(), image.height() - 2 * band)
@@ -104,7 +106,8 @@ def export_pdf(
     else:
         per_cm = min(area.width() / source.width(), area.height() / source.height())
     width, height = source.width() * per_cm, source.height() * per_cm
-    target = QRectF(area.x() + (area.width() - width) / 2, area.y(), width, height)
+    left, top = area.x() + (area.width() - width) / 2, area.y() + (area.height() - height) / 2
+    target = QRectF(left, top, width, height)
     painter = QPainter()
     if not painter.begin(writer):
         raise _write_failed(path)

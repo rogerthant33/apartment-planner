@@ -73,6 +73,8 @@ def calibrate(doc: ProjectDoc, a: XY, b: XY, distance: float) -> ProjectDoc:
     """Scale the image so the points clicked at world `a` and `b` are `distance` cm
     apart. The image stays put at `a`."""
     bg = _background(doc)
+    if bg.locked:
+        raise EditError("The background image is locked. Unlock it to calibrate it.")
     if not distance > 0:
         raise EditError("Enter the real distance between the two points, such as 3.5 m.")
     clicked = math.dist(a, b)

@@ -15,6 +15,7 @@ from apartment_planner.persistence.library import (
     default_projects_folder,
     delete_project,
     duplicate_project,
+    file_name_part,
     list_projects,
     name_problem,
     rename_project,
@@ -181,3 +182,8 @@ def test_delete_reports_a_file_the_trash_refused(tmp_path: Path) -> None:
     with pytest.raises(ProjectFileError, match=r'move "Flat\.apartment" to the trash'):
         delete_project(path, trash=lambda p: False)
     assert path.exists()
+
+
+def test_file_name_part_replaces_characters_files_cannot_have() -> None:
+    assert file_name_part('Plan: 1/2 "final"\tv2?') == "Plan- 1-2 -final--v2-"
+    assert file_name_part("Küche & Bad (v2)") == "Küche & Bad (v2)"

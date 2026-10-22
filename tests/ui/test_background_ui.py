@@ -116,3 +116,16 @@ def test_image_moves_by_dragging_until_locked(
     assert after is not None
     assert (after.origin.x - before.origin.x, after.locked) == (30, True)
     assert math.isclose(after.origin.y, before.origin.y)
+
+
+def test_opacity_changed_with_the_keyboard_is_saved(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import_image(window, monkeypatch, tmp_path, png(tmp_path, 20, 10))
+    editor(window).select(())
+    slider = window.properties.settings_page.background.opacity
+
+    slider.setValue(80)  # what arrow keys, the wheel and clicks on the track do
+
+    bg = editor(window).doc.background
+    assert bg is not None and bg.opacity == 0.8

@@ -249,3 +249,25 @@ def test_ctrl_click_adds_rooms_and_dragging_moves_them_together(view: PlanView) 
 
     assert corners(room(view.state.doc, first.id))[0] == (0, 100)
     assert corners(room(view.state.doc, second.id))[0] == (600, 100)
+
+
+def test_several_selected_rooms_show_no_corner_handles(view: PlanView) -> None:
+    first, second = with_rooms(view, SQUARE, NEIGHBOUR)
+
+    view.state.select({first.id, second.id})
+    view.refresh()
+
+    assert [len(item.handles) for item in view.plan.rooms] == [0, 0]
+    view.state.select({second.id})
+    view.refresh()
+    assert [len(item.handles) for item in view.plan.rooms] == [0, 4]
+
+
+def test_a_read_only_project_selects_rooms_but_does_not_move_them(view: PlanView) -> None:
+    (only,) = with_rooms(view, SQUARE)
+    view.set_state(view.state, editable=False)
+
+    drag(view.tools["select"], (200, 150), (300, 250))
+
+    assert view.state.selection == {only.id}
+    assert corners(room(view.state.doc, only.id)) == SQUARE

@@ -23,7 +23,12 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.canvas.view import PlanView
 from apartment_planner.persistence.errors import ProjectFileError
-from apartment_planner.persistence.library import Library, create_project, project_name
+from apartment_planner.persistence.library import (
+    Library,
+    create_project,
+    file_name_part,
+    project_name,
+)
 from apartment_planner.persistence.session import ProjectSession
 from apartment_planner.state.background import calibrate, image_type, set_background
 from apartment_planner.state.editor import EditorState
@@ -383,7 +388,8 @@ class MainWindow(QMainWindow):
         if choice is None:
             return
         doc = project.doc
-        suggested = project.path.parent / f"{doc.name} - {doc.active_layout.name}.{choice.format}"
+        name = file_name_part(f"{doc.name} - {doc.active_layout.name}")
+        suggested = project.path.parent / f"{name}.{choice.format}"
         path = dialogs.save_export(self, suggested, choice.format)
         if path is None:
             return

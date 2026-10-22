@@ -166,7 +166,7 @@ class PlanView(QGraphicsView):
         if bg.asset_id not in self._pixmaps:
             pixmap = QPixmap()
             pixmap.loadFromData(self.assets[bg.asset_id])
-            self._pixmaps[bg.asset_id] = pixmap
+            self._pixmaps = {bg.asset_id: pixmap}  # only the current image stays decoded
         pixmap = self._pixmaps[bg.asset_id]
         return None if pixmap.isNull() else pixmap
 
