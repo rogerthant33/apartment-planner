@@ -42,7 +42,7 @@ obstacles, then try out several furniture layouts and check what fits.
 | Data model / validation | pydantic v2 |
 | Tests | pytest, hypothesis (geometry properties), pytest-qt (UI) |
 | Lint / format / types | ruff, mypy (strict, pydantic plugin) |
-| Packaging | PyInstaller, one-folder build per OS (`packaging/build.py`); macOS gets an `.app` |
+| Packaging | PyInstaller, one-folder build per OS (`packaging/build.py`); macOS gets an `.app`. Share the whole folder, zipped (README.md) |
 
 ## 3. Interface
 
@@ -619,7 +619,8 @@ library, auto-update.
 7. **Finish.** Background image with calibration, plan PNG/PDF export,
    PyInstaller builds, visual polish.
 
-Each milestone ends with a working app and passing tests.
+Each milestone ends with a working app and passing tests. All seven are done;
+later changes extend them, and this document is kept current with them.
 
 ## 16. Acceptance criteria
 
