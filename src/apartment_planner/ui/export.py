@@ -14,14 +14,14 @@ from PySide6.QtGui import QColor, QFont, QImage, QPageLayout, QPageSize, QPainte
 from apartment_planner.canvas import style
 from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.fit.findings import check_fit
-from apartment_planner.geometry.paper import fitting_scale, scale_bar_length
+from apartment_planner.geometry.paper import MM_PER_CM, fits_at, scale_bar_length
 from apartment_planner.geometry.shapes import plan_bounds
 from apartment_planner.model import ProjectDoc
 from apartment_planner.state.units import format_length
 
 MARGIN_CM = 50.0  # world space kept around the plan
 TITLE_PT = 14.0
-BAND = 3.0  # title and scale-bar bands, in title heights
+BAND_HEIGHT = TITLE_PT * 3  # the title's band above the plan, and the scale bar's below
 POINT_MM = 25.4 / 72  # PDFs are drawn in points
 PAPER_MARGIN_MM = 10.0
 SCALES = (50, 100)
@@ -60,7 +60,7 @@ def export_png(doc: ProjectDoc, path: Path, px_per_m: float = 150, warnings: boo
     """Raises ExportError if there's nothing to draw or the file can't be written."""
     source = plan_rect(doc)
     per_cm = px_per_m / 100
-    band = _band_height()
+    band = BAND_HEIGHT
     width, height = round(source.width() * per_cm), round(source.height() * per_cm + 2 * band)
     image = QImage(width, height, QImage.Format.Format_RGB32)
     if image.isNull():  # too big to hold in memory
@@ -94,15 +94,14 @@ def export_pdf(
     writer.setPageLayout(
         QPageLayout(QPageSize(size), orientation, margins, QPageLayout.Unit.Millimeter)
     )
-    band = _band_height()
+    band = BAND_HEIGHT
     area = QRectF(0, band, writer.width(), writer.height() - 2 * band)
     area_mm = (area.width() * POINT_MM, area.height() * POINT_MM)
     content = (source.width(), source.height())
-    scale = None
-    if options.scale is not None:
-        scale = fitting_scale(content, area_mm, [options.scale])
+    wanted = options.scale
+    scale = wanted if wanted is not None and fits_at(content, area_mm, wanted) else None
     if scale is not None:
-        per_cm = 10 / scale / POINT_MM  # points per world cm
+        per_cm = MM_PER_CM / scale / POINT_MM  # points per world cm
     else:
         per_cm = min(area.width() / source.width(), area.height() / source.height())
     width, height = source.width() * per_cm, source.height() * per_cm
@@ -127,10 +126,6 @@ def _title_font() -> QFont:
     return font
 
 
-def _band_height() -> float:
-    return TITLE_PT * BAND
-
-
 def _draw(
     painter: QPainter,
     doc: ProjectDoc,
@@ -141,51 +136,36 @@ def _draw(
     warnings: bool,
 ) -> None:
     with style.light():  # paper is white, whatever the screen shows
-        _draw_plan(painter, doc, source, target, per_cm, title, warnings)
-
-
-def _draw_plan(
-    painter: QPainter,
-    doc: ProjectDoc,
-    source: QRectF,
-    target: QRectF,
-    per_cm: float,
-    title: str,
-    warnings: bool,
-) -> None:
-    painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
-    scene = PlanScene()
-    findings = check_fit(doc.apartment, doc.active_layout, doc.settings.default_clearance)
-    scene.sync(
-        doc,
-        frozenset(),
-        editable=False,
-        findings=findings if warnings else (),
-        dimensions=True,
-    )
-    scene.preview.hide()
-    scene.render(painter, target, source, Qt.AspectRatioMode.KeepAspectRatio)
-    band = _band_height()
-    painter.setPen(style.LABEL)
-    painter.setFont(_title_font())
-    painter.drawText(
-        QRectF(target.left() + band / 3, target.top() - band, target.width(), band),
-        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-        title,
-    )
-    length = scale_bar_length(source.width() / 4)
-    left = target.left() + band / 3
-    y = target.bottom() + band / 2
-    right = left + length * per_cm
-    painter.setPen(QPen(style.ROOM_OUTLINE, 1.5))
-    painter.drawLine(QPointF(left, y), QPointF(right, y))
-    for x in (left, right):
-        painter.drawLine(QPointF(x, y - 4), QPointF(x, y + 4))
-    font = _title_font()
-    font.setPointSizeF(TITLE_PT * 0.7)
-    painter.setFont(font)
-    painter.drawText(
-        QRectF(right + 8, y - band / 2, band * 4, band),
-        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-        format_length(length, doc.settings.display_unit),
-    )
+        painter.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing
+        )
+        scene = PlanScene()
+        depth = doc.settings.default_clearance
+        findings = check_fit(doc.apartment, doc.active_layout, depth) if warnings else []
+        scene.sync(doc, frozenset(), editable=False, findings=findings, dimensions=True)
+        scene.preview.hide()
+        scene.render(painter, target, source, Qt.AspectRatioMode.KeepAspectRatio)
+        band = BAND_HEIGHT
+        painter.setPen(style.LABEL)
+        painter.setFont(_title_font())
+        painter.drawText(
+            QRectF(target.left() + band / 3, target.top() - band, target.width(), band),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            title,
+        )
+        length = scale_bar_length(source.width() / 4)
+        left = target.left() + band / 3
+        y = target.bottom() + band / 2
+        right = left + length * per_cm
+        painter.setPen(QPen(style.ROOM_OUTLINE, 1.5))
+        painter.drawLine(QPointF(left, y), QPointF(right, y))
+        for x in (left, right):
+            painter.drawLine(QPointF(x, y - 4), QPointF(x, y + 4))
+        font = _title_font()
+        font.setPointSizeF(TITLE_PT * 0.7)
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(right + 8, y - band / 2, band * 4, band),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            format_length(length, doc.settings.display_unit),
+        )

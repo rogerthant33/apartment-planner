@@ -1,6 +1,6 @@
 import pytest
 
-from apartment_planner.geometry.paper import fits_at, fitting_scale, scale_bar_length
+from apartment_planner.geometry.paper import fits_at, scale_bar_length
 
 A4_AREA = (190.0, 277.0)  # mm inside 10 mm margins, portrait
 
@@ -18,15 +18,6 @@ def test_fits_at_both_dimensions_inclusive(
     content: tuple[float, float], scale: int, expected: bool
 ) -> None:
     assert fits_at(content, A4_AREA, scale) is expected
-
-
-@pytest.mark.parametrize(
-    ("content", "expected"), [((900, 1200), 50), ((1200, 900), 100), ((2000, 2000), None)]
-)
-def test_fitting_scale_is_the_first_that_fits(
-    content: tuple[float, float], expected: int | None
-) -> None:
-    assert fitting_scale(content, A4_AREA, (50, 100)) == expected
 
 
 @pytest.mark.parametrize(

@@ -134,5 +134,12 @@ def test_a_selected_room_shows_its_walls_split_by_openings(view: PlanView) -> No
     view.refresh()
 
     (room_item,) = view.plan.rooms
-    assert [label.text for label in room_item.edge_labels] == ["400 cm", "300 cm"] * 2
-    assert [label.text for label in room_item.piece_labels] == ["60 cm", "80 cm", "260 cm"]
+    assert [label.text for label in room_item.dimension_labels] == [
+        "400 cm",
+        "60 cm",
+        "80 cm",
+        "260 cm",
+        "300 cm",
+        "400 cm",
+        "300 cm",
+    ]

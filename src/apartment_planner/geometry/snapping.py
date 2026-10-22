@@ -6,7 +6,7 @@ distance on screen.
 """
 
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -115,16 +115,11 @@ def snap_move(
     `anchor` (the item's origin) lands on the grid, when there is one.
     """
     dx, dy = delta
-    best: tuple[float, XY] | None = None
-    for x, y in corners:
-        moved = (x + dx, y + dy)
-        for a, b in edges:
-            target = nearest_on_segment(moved, a, b)
-            distance = math.dist(moved, target)
-            if distance <= tolerance and (best is None or distance < best[0]):
-                best = (distance, (target[0] - moved[0], target[1] - moved[1]))
-    if best is not None:
-        return (dx + best[1][0], dy + best[1][1])
+    shift = _closest_shift(
+        corners, delta, lambda moved: (nearest_on_segment(moved, a, b) for a, b in edges), tolerance
+    )
+    if shift is not None:
+        return (dx + shift[0], dy + shift[1])
     if grid is not None:
         gx, gy = snap_to_grid((anchor[0] + dx, anchor[1] + dy), grid)
         return (gx - anchor[0], gy - anchor[1])
@@ -146,13 +141,26 @@ def snap_room_move(
     the first corner lands on the grid.
     """
     dx, dy = delta
+    shift = _closest_shift(corners, delta, lambda _: targets.vertices, tolerance)
+    if shift is not None:
+        return (dx + shift[0], dy + shift[1])
+    return snap_move(corners, corners[0], delta, targets.edges, grid=grid, tolerance=tolerance)
+
+
+def _closest_shift(
+    corners: Sequence[XY],
+    delta: XY,
+    targets_for: Callable[[XY], Iterable[XY]],
+    tolerance: float,
+) -> XY | None:
+    """The shortest further shift that puts a moved corner on one of its targets,
+    within `tolerance`; the first found wins a tie. None if none is in reach."""
+    dx, dy = delta
     best: tuple[float, XY] | None = None
     for x, y in corners:
         moved = (x + dx, y + dy)
-        for vertex in targets.vertices:
-            distance = math.dist(moved, vertex)
+        for target in targets_for(moved):
+            distance = math.dist(moved, target)
             if distance <= tolerance and (best is None or distance < best[0]):
-                best = (distance, (vertex[0] - moved[0], vertex[1] - moved[1]))
-    if best is not None:
-        return (dx + best[1][0], dy + best[1][1])
-    return snap_move(corners, corners[0], delta, targets.edges, grid=grid, tolerance=tolerance)
+                best = (distance, (target[0] - moved[0], target[1] - moved[1]))
+    return None if best is None else best[1]

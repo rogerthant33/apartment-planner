@@ -6,6 +6,7 @@ right of its direction: the inward normal of (dx, dy) is (-dy, dx).
 
 import math
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from shapely.geometry import Polygon
 
@@ -83,9 +84,9 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
 
 def wall_pieces(
     room: Room, openings: Sequence[Opening], start_vertex_id: str
-) -> list[tuple[float, float, bool]]:
-    """An edge split by its openings, in order along it: (from, to, is_opening),
-    in cm from the edge start. Empty if no opening is on the edge.
+) -> list[tuple[float, float]]:
+    """An edge split by its openings into wall and opening pieces, in order along
+    it: (from, to) in cm from the edge start. Empty if no opening is on the edge.
 
     Openings are clamped to the edge, and ones that overlap are taken as one.
     """
@@ -102,16 +103,43 @@ def wall_pieces(
             merged[-1] = (merged[-1][0], max(merged[-1][1], span_end))
         else:
             merged.append((span_start, span_end))
-    pieces: list[tuple[float, float, bool]] = []
+    pieces: list[tuple[float, float]] = []
     cursor = 0.0
     for span_start, span_end in merged:
         if span_start > cursor + EPS:
-            pieces.append((cursor, span_start, False))
-        pieces.append((span_start, span_end, True))
+            pieces.append((cursor, span_start))
+        pieces.append((span_start, span_end))
         cursor = span_end
     if merged and cursor < length - EPS:
-        pieces.append((cursor, length, False))
+        pieces.append((cursor, length))
     return pieces
+
+
+class Dimension(NamedTuple):
+    """A length to label: where (the middle of what it measures), and which way to
+    move the label off the wall line, as a unit vector ((0, 0): on the line)."""
+
+    anchor: XY
+    length: float
+    side: XY
+
+
+def edge_dimensions(room: Room, openings: Sequence[Opening]) -> list[Dimension]:
+    """Each edge's length, in edge order. An edge with openings also gets the lengths
+    it's split into, just inside the room, and its full length moves just outside."""
+    dimensions = []
+    for vertex in room.vertices:
+        a, b = edge(room, vertex.id)
+        pieces = wall_pieces(room, openings, vertex.id)
+        nx, ny = inward_normal(a, b)
+        middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        dimensions.append(Dimension(middle, math.dist(a, b), (-nx, -ny) if pieces else (0, 0)))
+        dx, dy = _unit(a, b)
+        for start, end in pieces:
+            along = (start + end) / 2
+            anchor = (a[0] + dx * along, a[1] + dy * along)
+            dimensions.append(Dimension(anchor, end - start, (nx, ny)))
+    return dimensions
 
 
 def nearest_edge(rooms: list[Room], point: XY, tolerance: float) -> tuple[Room, str, float] | None:

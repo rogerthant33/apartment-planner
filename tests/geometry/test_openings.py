@@ -7,6 +7,7 @@ from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
 from apartment_planner.geometry.openings import (
     door_swing,
     edge,
+    edge_dimensions,
     inward_normal,
     nearest_edge,
     opening_at,
@@ -181,11 +182,11 @@ def test_wall_pieces_split_an_edge_around_its_openings_in_order() -> None:
     openings = [window(0, 300), door(0, 100), window(1, 150)]  # the last is on another edge
 
     assert wall_pieces(ROOM, openings, top) == [
-        (0, 60, False),
-        (60, 140, True),
-        (140, 260, False),
-        (260, 340, True),
-        (340, 400, False),
+        (0, 60),
+        (60, 140),
+        (140, 260),
+        (260, 340),
+        (340, 400),
     ]
     assert wall_pieces(ROOM, openings, ROOM.vertices[2].id) == []  # no opening there
 
@@ -194,18 +195,31 @@ def test_wall_pieces_split_an_edge_around_its_openings_in_order() -> None:
     ("openings", "expected"),
     [
         # Flush with the corner: no zero-length wall piece before it.
-        ([window(0, 40)], [(0, 80, True), (80, 400, False)]),
+        ([window(0, 40)], [(0, 80), (80, 400)]),
         # Touching openings stay two; overlapping ones become one.
         (
             [window(0, 140), window(0, 220)],
-            [(0, 100, False), (100, 180, True), (180, 260, True), (260, 400, False)],
+            [(0, 100), (100, 180), (180, 260), (260, 400)],
         ),
-        ([window(0, 140), window(0, 200)], [(0, 100, False), (100, 240, True), (240, 400, False)]),
+        ([window(0, 140), window(0, 200)], [(0, 100), (100, 240), (240, 400)]),
         # As wide as the wall.
-        ([window(0, 200, 400)], [(0, 400, True)]),
+        ([window(0, 200, 400)], [(0, 400)]),
     ],
 )
 def test_wall_pieces_at_the_edges_of_openings(
-    openings: list[Opening], expected: list[tuple[float, float, bool]]
+    openings: list[Opening], expected: list[tuple[float, float]]
 ) -> None:
     assert wall_pieces(ROOM, openings, ROOM.vertices[0].id) == expected
+
+
+def test_edge_dimensions_split_walls_with_openings_and_move_their_length_outside() -> None:
+    dims = edge_dimensions(ROOM, [door(0, 100)])  # the top wall: 60 + 80 + 260 cm
+
+    assert dims[:5] == [
+        ((200, 0), 400, (0, -1)),  # outside: the room is below the top wall
+        ((30, 0), 60, (0, 1)),
+        ((100, 0), 80, (0, 1)),
+        ((270, 0), 260, (0, 1)),
+        ((400, 150), 300, (0, 0)),  # no openings: on the wall line
+    ]
+    assert [d.length for d in dims[5:]] == [400, 300]
