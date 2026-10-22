@@ -111,8 +111,11 @@ after confirmation), Show in Folder, and changing the projects folder.
   minimum 3).
 - Add, rename, duplicate and delete rooms. Each room has a name label at its
   centroid (or inside it, for shapes whose centroid falls outside) and shows
-  its area. The selected room shows its edge lengths. A duplicate is named
-  "<name> copy", copies the room's openings and is offset by 50 cm. Deleting
+  its area. The selected room shows its edge lengths. Duplicate (Ctrl+D)
+  copies every selected room; each copy is named "<name> copy", copies the
+  room's openings and is offset by 50 cm. Copies (duplicated or pasted) only
+  take in furniture that stood in no room; furniture keeps the room it was in,
+  even where a copy overlaps it. Deleting
   a room deletes its openings and unassigns furniture placed in it.
 - Adjacent rooms share boundaries by snapping vertices and edges together.
   There is no wall graph: each room owns its polygon.

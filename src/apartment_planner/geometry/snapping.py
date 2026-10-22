@@ -187,16 +187,18 @@ def _slide_onto(
     corners so one lands on an edge that crosses that direction; 0 if none is in
     reach. The shortest slide wins; the first found wins a tie."""
     ux, uy = along
-    moved = [(x + delta[0], y + delta[1]) for x, y in corners]
-    best: float | None = None
+    crossing = []
     for (ax, ay), (bx, by) in edges:
         ex, ey = bx - ax, by - ay
         denominator = ux * ey - uy * ex  # the edge's length times the sine between them
-        if abs(denominator) * tolerance <= EPS * math.hypot(ex, ey):
-            # (Nearly) parallel to the slide, such as the edge it's flush against:
-            # within reach it strays less than EPS from it, so it's no corner.
-            continue
-        for px, py in moved:
+        # (Nearly) parallel to the slide, such as the edge it's flush against: within
+        # reach it strays less than EPS from it, so it makes no corner.
+        if abs(denominator) * tolerance > EPS * math.hypot(ex, ey):
+            crossing.append((ax, ay, ex, ey, denominator))
+    best: float | None = None
+    for x, y in corners:
+        px, py = x + delta[0], y + delta[1]
+        for ax, ay, ex, ey, denominator in crossing:
             ox, oy = ax - px, ay - py
             t = (ox * ey - oy * ex) / denominator
             s = (ox * uy - oy * ux) / denominator

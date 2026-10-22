@@ -16,10 +16,10 @@ from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import add_furniture, furniture_item
 from apartment_planner.state.rooms import (
     add_room,
+    copy_rooms,
     delete_room,
     delete_selection,
     delete_vertex,
-    duplicate_room,
     insert_vertex,
     move_rooms,
     move_vertex,
@@ -142,7 +142,7 @@ def test_duplicate_room_copies_openings_with_new_ids() -> None:
     doc, r = with_room()
     doc = with_window(doc, r, edge=1, offset=100, width=80)
 
-    doc, copy_id = duplicate_room(doc, r.id, (50, 25))
+    doc, (copy_id,) = copy_rooms(doc, [r], doc.apartment.openings, (50, 25))
 
     copy = room(doc, copy_id)
     original_window, copied_window = doc.apartment.openings
@@ -337,7 +337,8 @@ def test_deleting_a_room_keeps_the_others_and_their_openings(three_rooms: Projec
 
 
 def test_duplicating_a_room_copies_only_its_openings(three_rooms: ProjectDoc) -> None:
-    doc, copy_id = duplicate_room(three_rooms, ROOM_B, (0, 400))
+    source = room(three_rooms, ROOM_B)
+    doc, (copy_id,) = copy_rooms(three_rooms, [source], three_rooms.apartment.openings, (0, 400))
 
     copies = doc.apartment.openings[len(three_rooms.apartment.openings) :]
     assert [o.room_id for o in copies] == [copy_id, copy_id]
@@ -399,3 +400,14 @@ def test_selected_room_is_only_one_room() -> None:
 
     assert selected_room(doc, frozenset({r.id, r.vertices[0].id})) == r
     assert selected_room(doc, frozenset({r.id, other_id})) is None
+
+
+def test_copied_rooms_take_only_furniture_that_was_in_no_room() -> None:
+    doc, r = with_room()  # x 0..400
+    doc, sofa = add_furniture(doc, RectShape(width=50, depth=50), (300, 100), "Sofa")
+    doc, stool = add_furniture(doc, RectShape(width=50, depth=50), (500, 100), "Stool")
+
+    doc, (copy_id,) = copy_rooms(doc, [r], (), (200, 0))  # x 200..600, over the sofa too
+
+    assert furniture_item(doc, sofa).room_id == r.id
+    assert furniture_item(doc, stool).room_id == copy_id

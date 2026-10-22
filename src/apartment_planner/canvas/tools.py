@@ -699,7 +699,7 @@ class PolygonTool(Tool):
     def move(self, pointer: Pointer) -> None:
         if self.points:
             closing = self._closes(pointer)
-            self._show(self.snapped(pointer), closing=closing)
+            self._show(self.points[0] if closing else self.snapped(pointer), closing=closing)
 
     def _closes(self, pointer: Pointer) -> bool:
         """True if a click here would close the outline: it's on the first corner."""

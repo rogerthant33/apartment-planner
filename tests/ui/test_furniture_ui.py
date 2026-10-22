@@ -245,3 +245,18 @@ def test_cutting_a_room_with_a_corner_selected_cuts_the_whole_room(window: MainW
     QTest.keyClick(window.view, Qt.Key.Key_X, Qt.KeyboardModifier.ControlModifier)
 
     assert editor(window).doc.apartment.rooms == ()
+
+
+def test_a_refused_paste_after_a_cut_still_leaves_the_next_one_in_place(
+    window: MainWindow,
+) -> None:
+    table = add_table(window)
+    window.commands.cut()
+
+    window.view.editable = False  # as for a project another computer has open
+    window.commands.paste()
+    window.view.editable = True
+    window.commands.paste()
+
+    (pasted,) = furniture(window)
+    assert (pasted.x, pasted.y) == (table.x, table.y)

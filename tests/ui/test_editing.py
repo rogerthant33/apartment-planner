@@ -172,3 +172,19 @@ def test_several_selected_rooms_get_their_own_page_and_delete_together(window: M
     page.buttons["Delete"].click()
 
     assert editor(window).doc.apartment.rooms == ()
+
+
+def test_duplicate_copies_every_selected_room_or_says_what_to_select(window: MainWindow) -> None:
+    room_id = unlock_and_select_room(window)
+    window.duplicate_action.trigger()
+    copy_id = editor(window).doc.apartment.rooms[1].id
+
+    editor(window).select({room_id, copy_id})
+    window.duplicate_action.trigger()
+    assert len(editor(window).doc.apartment.rooms) == 4
+    editor(window).select(())
+    window.duplicate_action.trigger()
+
+    assert window.statusBar().currentMessage() == (
+        "Select furniture, obstacles or rooms to duplicate them."
+    )

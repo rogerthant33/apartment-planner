@@ -364,12 +364,15 @@ def _placed_in_room(doc: ProjectDoc, item: FurnitureItem) -> FurnitureItem:
     return item.evolve(room_id=room_at(doc.apartment.rooms, (item.x, item.y)))
 
 
-def reassign_rooms(doc: ProjectDoc) -> ProjectDoc:
+def reassign_rooms(doc: ProjectDoc, *, unassigned_only: bool = False) -> ProjectDoc:
     """Every item in every layout with `room_id` naming the room its origin is in,
-    after the rooms have changed."""
+    after the rooms have changed. `unassigned_only`: rooms were only added, so items
+    already in a room keep it, even where a new room overlaps it."""
     locate = room_locator(doc.apartment.rooms)
 
     def placed(item: FurnitureItem) -> FurnitureItem:
+        if unassigned_only and item.room_id is not None:
+            return item
         room_id = locate((item.x, item.y))
         return item if item.room_id == room_id else item.evolve(room_id=room_id)
 
