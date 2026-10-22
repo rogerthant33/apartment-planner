@@ -562,6 +562,9 @@ class MainWindow(QMainWindow):
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)
+        self.copy_action.setEnabled(state is not None)  # a read-only project can be copied from
+        for action in (self.cut_action, self.paste_action):
+            action.setEnabled(editable)
         self.lock_action.setEnabled(editable)
         self.lock_action.blockSignals(True)
         self.lock_action.setChecked(locked)
@@ -626,6 +629,9 @@ class MainWindow(QMainWindow):
         self.delete_action = action("Delete", self.delete_pressed)
         self.delete_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Backspace")])
         self.duplicate_action = action("Duplicate", self.commands.duplicate, "Ctrl+D")
+        self.copy_action = action("Copy", self.commands.copy, QKeySequence.StandardKey.Copy)
+        self.cut_action = action("Cut", self.commands.cut, QKeySequence.StandardKey.Cut)
+        self.paste_action = action("Paste", self.commands.paste, QKeySequence.StandardKey.Paste)
         self.cancel_action = action("Cancel", self.cancel, "Escape")
         self.addAction(self.cancel_action)  # a shortcut only, not in a menu
 
@@ -756,6 +762,9 @@ class MainWindow(QMainWindow):
         self.addActions(
             [
                 self.select_all_action,
+                self.copy_action,
+                self.cut_action,
+                self.paste_action,
                 self.rotate_action,
                 self.rotate_back_action,
                 self.delete_action,

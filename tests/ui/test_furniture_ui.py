@@ -206,3 +206,25 @@ def test_turn_buttons_rotate_either_way_and_update_the_field(window: MainWindow)
     assert page.fields["rotation"].text() == "285°"
     assert page.turn_buttons["clockwise 90"].toolTip() == "Turn 90° clockwise (R)"
     assert page.turn_buttons["anticlockwise 90"].toolTip() == "Turn 90° anticlockwise (Shift+R)"
+
+
+def test_copy_cut_and_paste_with_the_keyboard(window: MainWindow) -> None:
+    table = add_table(window)
+    window.view.setFocus()
+    ctrl = Qt.KeyboardModifier.ControlModifier
+
+    QTest.keyClick(window.view, Qt.Key.Key_C, ctrl)
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    first, second = furniture(window)[1:]
+    assert [(f.name, f.x - table.x, f.y - table.y) for f in (first, second)] == [
+        ("Table 2", 50, 50),
+        ("Table 3", 100, 100),
+    ]
+    assert editor(window).selection == {second.id}
+
+    QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)
+    assert [f.name for f in furniture(window)] == ["Table", "Table 2"]
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)  # back where it was cut from
+    pasted = furniture(window)[-1]
+    assert (pasted.name, pasted.x, pasted.y) == ("Table 3", second.x, second.y)

@@ -102,7 +102,18 @@ def delete_room(doc: ProjectDoc, room_id: str) -> ProjectDoc:
 
 def duplicate_room(doc: ProjectDoc, room_id: str, offset: XY) -> tuple[ProjectDoc, str]:
     """A copy of the room and its openings, moved by `offset`. Returns the copy's ID."""
-    source = room(doc, room_id)
+    copy, openings = copied_room(room(doc, room_id), doc.apartment.openings, offset)
+    apartment = doc.apartment.evolve(
+        rooms=(*doc.apartment.rooms, copy), openings=(*doc.apartment.openings, *openings)
+    )
+    return doc.evolve(apartment=apartment), copy.id
+
+
+def copied_room(
+    source: Room, openings: Iterable[Opening], offset: XY
+) -> tuple[Room, tuple[Opening, ...]]:
+    """A copy of `source`, named "<name> copy", with new IDs and moved by `offset`, and
+    copies of those of `openings` that are in it."""
     vertex_ids = {v.id: new_id() for v in source.vertices}
     dx, dy = offset
     copy = source.evolve(
@@ -112,17 +123,14 @@ def duplicate_room(doc: ProjectDoc, room_id: str, offset: XY) -> tuple[ProjectDo
             Vertex(id=vertex_ids[v.id], x=v.x + dx, y=v.y + dy) for v in source.vertices
         ),
     )
-    openings = tuple(
+    copied = tuple(
         o.evolve(
             id=new_id(), room_id=copy.id, edge_start_vertex_id=vertex_ids[o.edge_start_vertex_id]
         )
-        for o in doc.apartment.openings
-        if o.room_id == room_id
+        for o in openings
+        if o.room_id == source.id
     )
-    apartment = doc.apartment.evolve(
-        rooms=(*doc.apartment.rooms, copy), openings=(*doc.apartment.openings, *openings)
-    )
-    return doc.evolve(apartment=apartment), copy.id
+    return copy, copied
 
 
 def selected_room(doc: ProjectDoc, selection: frozenset[str]) -> Room | None:
