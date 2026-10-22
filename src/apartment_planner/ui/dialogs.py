@@ -36,6 +36,12 @@ def confirm(parent: QWidget | None, title: str, text: str, action: str) -> bool:
     return box.clickedButton() is yes
 
 
+def ask_text(parent: QWidget | None, title: str, label: str, text: str = "") -> str | None:
+    """A line of text, or None if the user cancels or leaves it empty."""
+    value, ok = QInputDialog.getText(parent, title, label, QLineEdit.EchoMode.Normal, text)
+    return (value.strip() or None) if ok else None
+
+
 def ask_project_name(parent: QWidget | None, title: str, text: str = "") -> str | None:
     """Ask until the name is usable as a file name, or the user cancels."""
     label = "Project name:"

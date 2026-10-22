@@ -1,0 +1,121 @@
+"""The furniture properties panel's fields: their text, and what typed text changes.
+
+Pure, so the panel only shows text and commits what `parse_field` returns.
+"""
+
+import re
+from typing import Any
+
+from apartment_planner.geometry.handles import box_size, with_box_size
+from apartment_planner.model import FurnitureItem, FurnitureMeta
+from apartment_planner.state.errors import EditError
+from apartment_planner.state.units import Unit, format_length, parse_length
+
+FIELDS: dict[str, str] = {
+    "name": "Name",
+    "category": "Category",
+    "x": "X",
+    "y": "Y",
+    "rotation": "Rotation",
+    "width": "Width",
+    "depth": "Depth",
+    "color": "Colour",
+    "clearance": "Clearance",
+    "notes": "Notes",
+    "product": "Product",
+    "url": "Link",
+    "price": "Price",
+}
+"""Field keys and their labels, in the order the panel shows them."""
+
+META_FIELDS = ("product", "url", "price")
+_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def field_values(item: FurnitureItem, unit: Unit) -> dict[str, str]:
+    """The text each field shows for `item`. Polygons have no width or depth."""
+    meta = item.meta or FurnitureMeta()
+    values = {
+        "name": item.name,
+        "category": item.category or "",
+        "x": format_length(item.x, unit),
+        "y": format_length(item.y, unit),
+        "rotation": f"{item.rotation:g}°",
+        "color": item.color or "",
+        "clearance": "" if item.clearance is None else format_length(item.clearance, unit),
+        "notes": item.notes or "",
+        "product": meta.product or "",
+        "url": meta.url or "",
+        "price": "" if meta.price is None else f"{meta.price:g}",
+    }
+    size = box_size(item.shape)
+    if size is not None:
+        values["width"] = format_length(size[0], unit)
+        values["depth"] = format_length(size[1], unit)
+    return values
+
+
+def parse_field(item: FurnitureItem, key: str, text: str, unit: Unit) -> dict[str, Any]:
+    """The changes to `item` that typing `text` into field `key` means.
+
+    Raises EditError with a message for the user if the text isn't usable.
+    """
+    text = text.strip()
+    label = FIELDS[key]
+    match key:
+        case "name":
+            if not text:
+                raise EditError("Enter a name.")
+            return {"name": text}
+        case "category" | "notes":
+            return {key: text or None}
+        case "x" | "y":
+            return {key: _coordinate(text, unit, label)}
+        case "rotation":
+            try:
+                return {"rotation": float(text.removesuffix("°").replace(",", "."))}
+            except ValueError:
+                raise EditError(f"{label}: enter an angle in degrees, such as 90.") from None
+        case "width" | "depth":
+            size = box_size(item.shape)
+            if size is None:
+                raise EditError(f"{label}: this shape is sized by its corners.")
+            length = parse_length(text, unit)
+            if length is None or length <= 0:
+                raise EditError(f"{label}: enter a length greater than 0, such as 120 or 1.2 m.")
+            width, depth = (length, size[1]) if key == "width" else (size[0], length)
+            return {"shape": with_box_size(item.shape, width, depth)}
+        case "color":
+            if text and not _COLOR.match(text):
+                raise EditError(f"{label}: enter a colour such as #a0b0c0, or leave it empty.")
+            return {"color": text or None}
+        case "clearance":
+            if not text:
+                return {"clearance": None}
+            length = parse_length(text, unit)
+            if length is None:
+                raise EditError(f"{label}: enter a length such as 60, or leave it empty.")
+            return {"clearance": length}
+        case _:
+            return {"meta": _meta(item, key, text, label)}
+
+
+def _coordinate(text: str, unit: Unit, label: str) -> float:
+    negative = text.startswith("-")
+    length = parse_length(text.removeprefix("-"), unit)
+    if length is None:
+        raise EditError(f"{label}: enter a position such as 120 or -1.5 m.")
+    return -length if negative else length
+
+
+def _meta(item: FurnitureItem, key: str, text: str, label: str) -> FurnitureMeta | None:
+    value: str | float | None = text or None
+    if key == "price" and text:
+        try:
+            value = float(text.replace(",", "."))
+        except ValueError:
+            raise EditError(f"{label}: enter an amount such as 499, or leave it empty.") from None
+        if value < 0:
+            raise EditError(f"{label}: enter an amount of 0 or more.")
+    meta = (item.meta or FurnitureMeta()).evolve(**{key: value})
+    return None if meta == FurnitureMeta() else meta

@@ -6,12 +6,13 @@ distance on screen.
 """
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from apartment_planner.geometry.transform import XY
-from apartment_planner.model import Room
+from apartment_planner.geometry.shapes import shape_outline
+from apartment_planner.geometry.transform import XY, local_to_world_all
+from apartment_planner.model import Placed, Room
 
 
 class SnapKind(StrEnum):
@@ -87,3 +88,44 @@ def snap(
 
 def _nearest(point: XY, candidates: Iterable[XY]) -> XY | None:
     return min(candidates, key=lambda c: math.dist(point, c), default=None)
+
+
+def placed_edges(items: Iterable[Placed]) -> list[tuple[XY, XY]]:
+    """The footprint edges of furniture items or obstacles, for snapping against."""
+    edges: list[tuple[XY, XY]] = []
+    for item in items:
+        corners = local_to_world_all(shape_outline(item.shape), (item.x, item.y), item.rotation)
+        edges.extend(zip(corners, [*corners[1:], corners[0]], strict=True))  # pragma: no mutate
+    return edges
+
+
+def snap_move(
+    corners: Sequence[XY],
+    anchor: XY,
+    delta: XY,
+    edges: Sequence[tuple[XY, XY]],
+    *,
+    grid: float | None,
+    tolerance: float,
+) -> XY:
+    """Adjust a move by `delta` of an outline with these `corners`.
+
+    If a moved corner comes within `tolerance` of an edge (a wall or another
+    item), the outline moves flush against the nearest such edge. Otherwise
+    `anchor` (the item's origin) lands on the grid, when there is one.
+    """
+    dx, dy = delta
+    best: tuple[float, XY] | None = None
+    for x, y in corners:
+        moved = (x + dx, y + dy)
+        for a, b in edges:
+            target = nearest_on_segment(moved, a, b)
+            distance = math.dist(moved, target)
+            if distance <= tolerance and (best is None or distance < best[0]):
+                best = (distance, (target[0] - moved[0], target[1] - moved[1]))
+    if best is not None:
+        return (dx + best[1][0], dy + best[1][1])
+    if grid is not None:
+        gx, gy = snap_to_grid((anchor[0] + dx, anchor[1] + dy), grid)
+        return (gx - anchor[0], gy - anchor[1])
+    return delta

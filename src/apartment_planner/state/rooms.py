@@ -10,12 +10,9 @@ from collections.abc import Callable, Iterable, Sequence
 from apartment_planner.geometry.polygon import is_clockwise, signed_area, validate_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Point, ProjectDoc, Room, Vertex, new_id
+from apartment_planner.state.errors import EditError
 
 MIN_VERTICES = 3
-
-
-class EditError(ValueError):
-    """The edit was refused. The message says why, for the user."""
 
 
 def outline_problem(points: Sequence[Point]) -> str | None:
