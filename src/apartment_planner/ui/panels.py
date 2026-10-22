@@ -26,10 +26,11 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.geometry.polygon import edge_lengths
 from apartment_planner.geometry.shapes import room_polygon
-from apartment_planner.model import ProjectDoc, Room
+from apartment_planner.model import FurnitureItem, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
-from apartment_planner.state.furniture import selected_furniture
+from apartment_planner.state.openings import selected_openings
+from apartment_planner.state.placed import selected_placed
 from apartment_planner.state.rooms import (
     rename_room,
     selected_room,
@@ -38,6 +39,7 @@ from apartment_planner.state.rooms import (
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
 from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
 from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.opening_panel import OpeningPage
 
 ROOM_ID = Qt.ItemDataRole.UserRole  # the ID of a list entry's room or item
 UNITS: tuple[Unit, ...] = ("mm", "cm", "m")
@@ -54,6 +56,7 @@ class ToolsPanel(QWidget):
     def __init__(
         self,
         tool_actions: list[QAction],
+        apartment_actions: list[QAction],
         add_actions: list[QAction],
         layout_actions: list[QAction],
         parent: QWidget | None = None,
@@ -74,6 +77,8 @@ class ToolsPanel(QWidget):
         layout.addLayout(layout_row)
         layout.addWidget(QLabel("Tools"))
         layout.addLayout(_buttons(tool_actions))
+        layout.addWidget(QLabel("Add to the apartment (unlock it first)"))
+        layout.addLayout(_buttons(apartment_actions))
         layout.addWidget(QLabel("Add furniture"))
         layout.addLayout(_buttons(add_actions))
         layout.addWidget(QLabel("Rooms"))
@@ -313,18 +318,34 @@ class PropertiesPanel(QStackedWidget):
         self.room_page = RoomPage()
         self.furniture_page = FurniturePage()
         self.selection_page = SelectionPage()
-        for page in (self.settings_page, self.room_page, self.furniture_page, self.selection_page):
+        self.opening_page = OpeningPage()
+        for page in (
+            self.settings_page,
+            self.room_page,
+            self.furniture_page,
+            self.selection_page,
+            self.opening_page,
+        ):
             self.addWidget(page)
 
     def refresh(self, state: EditorState, editable: bool) -> None:
-        furniture = selected_furniture(state.doc, state.selection)
-        room = selected_room(state.doc, state.selection)
-        if len(furniture) > 1:
-            self.selection_page.show_items(furniture, editable)
+        doc = state.doc
+        placed = selected_placed(doc, state.selection)
+        openings = selected_openings(doc, state.selection)
+        room = selected_room(doc, state.selection)
+        # Obstacles and openings belong to the apartment, which may be locked.
+        apartment = editable and not doc.settings.apartment_locked
+        if placed and not isinstance(placed[0], FurnitureItem):
+            editable = apartment
+        if len(placed) > 1:
+            self.selection_page.show_items(placed, editable)
             self.setCurrentWidget(self.selection_page)
-        elif furniture:
-            self.furniture_page.show_item(state, furniture[0], editable)
+        elif placed:
+            self.furniture_page.show_item(state, placed[0], editable)
             self.setCurrentWidget(self.furniture_page)
+        elif openings:
+            self.opening_page.show_opening(state, openings[0], apartment)
+            self.setCurrentWidget(self.opening_page)
         elif room is not None:
             self.room_page.show_room(state, room, editable)
             self.setCurrentWidget(self.room_page)

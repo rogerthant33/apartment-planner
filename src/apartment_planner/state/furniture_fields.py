@@ -1,4 +1,5 @@
-"""The furniture properties panel's fields: their text, and what typed text changes.
+"""The properties panel's fields for furniture and obstacles: their text, and what
+typed text changes. Obstacles have no category, clearance or product details.
 
 Pure, so the panel only shows text and commits what `parse_field` returns.
 """
@@ -7,7 +8,7 @@ import re
 from typing import Any
 
 from apartment_planner.geometry.handles import box_size, with_box_size
-from apartment_planner.model import FurnitureItem, FurnitureMeta
+from apartment_planner.model import FurnitureItem, FurnitureMeta, Placed
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.units import Unit, format_length, parse_length
 
@@ -32,22 +33,25 @@ META_FIELDS = ("product", "url", "price")
 _COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-def field_values(item: FurnitureItem, unit: Unit) -> dict[str, str]:
-    """The text each field shows for `item`. Polygons have no width or depth."""
-    meta = item.meta or FurnitureMeta()
+def field_values(item: Placed, unit: Unit) -> dict[str, str]:
+    """The text each field `item` has. Polygons have no width or depth."""
     values = {
         "name": item.name,
-        "category": item.category or "",
         "x": format_length(item.x, unit),
         "y": format_length(item.y, unit),
         "rotation": f"{item.rotation:g}°",
         "color": item.color or "",
-        "clearance": "" if item.clearance is None else format_length(item.clearance, unit),
         "notes": item.notes or "",
-        "product": meta.product or "",
-        "url": meta.url or "",
-        "price": "" if meta.price is None else f"{meta.price:g}",
     }
+    if isinstance(item, FurnitureItem):
+        meta = item.meta or FurnitureMeta()
+        values |= {
+            "category": item.category or "",
+            "clearance": "" if item.clearance is None else format_length(item.clearance, unit),
+            "product": meta.product or "",
+            "url": meta.url or "",
+            "price": "" if meta.price is None else f"{meta.price:g}",
+        }
     size = box_size(item.shape)
     if size is not None:
         values["width"] = format_length(size[0], unit)
@@ -55,7 +59,7 @@ def field_values(item: FurnitureItem, unit: Unit) -> dict[str, str]:
     return values
 
 
-def parse_field(item: FurnitureItem, key: str, text: str, unit: Unit) -> dict[str, Any]:
+def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]:
     """The changes to `item` that typing `text` into field `key` means.
 
     Raises EditError with a message for the user if the text isn't usable.
@@ -97,6 +101,7 @@ def parse_field(item: FurnitureItem, key: str, text: str, unit: Unit) -> dict[st
                 raise EditError(f"{label}: enter a length such as 60, or leave it empty.")
             return {"clearance": length}
         case _:
+            assert isinstance(item, FurnitureItem)
             return {"meta": _meta(item, key, text, label)}
 
 

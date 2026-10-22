@@ -9,7 +9,9 @@ from typing import Any, Literal
 
 from apartment_planner.geometry.openings import edge
 from apartment_planner.model import DoorSpec, Opening, ProjectDoc, new_id
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.rooms import clamp_opening, room
+from apartment_planner.state.units import Unit, format_length, parse_length
 
 OpeningKind = Literal["door", "window", "opening"]
 
@@ -73,6 +75,31 @@ def update_opening(doc: ProjectDoc, opening_id: str, **changes: Any) -> ProjectD
     return _with_openings(
         doc, tuple(updated if o.id == opening_id else o for o in doc.apartment.openings)
     )
+
+
+def wall_length(doc: ProjectDoc, target: Opening) -> float:
+    return math.dist(*edge(room(doc, target.room_id), target.edge_start_vertex_id))
+
+
+def parse_opening_length(
+    doc: ProjectDoc, target: Opening, key: Literal["width", "offset"], text: str, unit: Unit
+) -> dict[str, float]:
+    """The change typing `text` into the opening's width or offset field means.
+
+    An opening can't be wider than its wall; offsets are clamped onto the wall.
+    """
+    length = parse_length(text.strip(), unit)
+    wall = wall_length(doc, target)
+    if key == "offset":
+        if length is None:
+            raise EditError("Offset: enter the distance from the wall's start, such as 60.")
+        return {"offset": length}
+    if length is None or length <= 0 or length > wall:
+        raise EditError(
+            f"Width: enter a length greater than 0 and at most the wall's "
+            f"{format_length(wall, unit)}."
+        )
+    return {"width": length}
 
 
 def delete_openings(doc: ProjectDoc, ids: Iterable[str]) -> ProjectDoc:

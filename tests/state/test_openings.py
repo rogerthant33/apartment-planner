@@ -1,11 +1,13 @@
 import pytest
 
 from apartment_planner.model import DoorSpec, ProjectDoc, new_project
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import (
     add_opening,
     delete_openings,
     move_opening,
     opening,
+    parse_opening_length,
     update_opening,
 )
 from apartment_planner.state.rooms import add_room, room
@@ -82,3 +84,33 @@ def test_delete_removes_only_the_given_openings() -> None:
     doc = delete_openings(doc, [first])
 
     assert [o.id for o in doc.apartment.openings] == [second]
+
+
+@pytest.mark.parametrize(("text", "width"), [("60 cm", 60), ("0.6 m", 60)])
+def test_an_opening_can_be_as_wide_as_its_wall(text: str, width: float) -> None:
+    doc, _, right = flat()  # its top wall is 60 cm long
+    doc, window_id = add_opening(doc, "window", right, top_edge(doc, right), 30)
+
+    changes = parse_opening_length(doc, opening(doc, window_id), "width", text, "cm")
+
+    assert changes == {"width": width}
+
+
+@pytest.mark.parametrize(("text", "unit"), [("60.1", "cm"), ("0", "cm"), ("wide", "m")])
+def test_widths_beyond_the_wall_or_unreadable_are_refused(text: str, unit: str) -> None:
+    doc, _, right = flat()
+    doc, window_id = add_opening(doc, "window", right, top_edge(doc, right), 30)
+    expected = "0.6 m" if unit == "m" else "60 cm"
+
+    with pytest.raises(EditError, match=f"at most the wall's {expected}"):
+        parse_opening_length(doc, opening(doc, window_id), "width", text, unit)  # type: ignore[arg-type]
+
+
+def test_offsets_are_read_in_the_display_unit_and_must_be_lengths() -> None:
+    doc, left, _ = flat()
+    doc, door_id = add_opening(doc, "door", left, top_edge(doc, left), 100)
+    door = opening(doc, door_id)
+
+    assert parse_opening_length(doc, door, "offset", " 1.5 m ", "m") == {"offset": 150}
+    with pytest.raises(EditError, match="Offset"):
+        parse_opening_length(doc, door, "offset", "left", "cm")

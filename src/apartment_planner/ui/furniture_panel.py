@@ -1,4 +1,4 @@
-"""Properties of selected furniture: one item's fields, or actions for several."""
+"""Properties of selected furniture or obstacles: one item's fields, or actions for several."""
 
 from collections.abc import Callable
 
@@ -13,17 +13,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from apartment_planner.model import FurnitureItem, PolygonShape, ProjectDoc
+from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
-    furniture_item,
     set_locked,
     set_shape_edge_length,
     shape_edge_lengths,
-    update_furniture,
 )
 from apartment_planner.state.furniture_fields import FIELDS, field_values, parse_field
+from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
 from apartment_planner.ui.inline_errors import error_label, show_error
 
@@ -40,7 +39,10 @@ def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
 
 
 class FurniturePage(QWidget):
-    """The fields of one furniture item. Each commits on Enter or focus-out."""
+    """The fields of one furniture item or obstacle. Each commits on Enter or focus-out.
+
+    Obstacles have no room, lock or corner editing, only the fields they share.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -55,6 +57,7 @@ class FurniturePage(QWidget):
             field.editingFinished.connect(lambda key=key: self._commit_field(key))
             form.addRow(label, field)
             self.fields[key] = field
+        self.title = QLabel()
         self.room = QLabel()
         form.addRow("Room", self.room)
         self.locked = QCheckBox("Locked (can't be moved or resized)")
@@ -66,6 +69,7 @@ class FurniturePage(QWidget):
         row, self.buttons = action_buttons("Duplicate", "Delete")
 
         layout = QVBoxLayout(self)
+        layout.addWidget(self.title)
         layout.addLayout(form)
         layout.addWidget(self.locked)
         layout.addWidget(self.edges_title)
@@ -74,7 +78,7 @@ class FurniturePage(QWidget):
         layout.addLayout(row)
         layout.addStretch()
 
-    def show_item(self, state: EditorState, item: FurnitureItem, editable: bool) -> None:
+    def show_item(self, state: EditorState, item: Placed, editable: bool) -> None:
         if item.id != self.item_id:
             show_error(self.error, None)
         self.state, self.item_id, self.editable = None, item.id, editable
@@ -86,27 +90,35 @@ class FurniturePage(QWidget):
             self._form.labelForField(field).setVisible(visible)
             field.setText(values.get(key, ""))
             field.setEnabled(editable)
-        room = next((r.name for r in doc.apartment.rooms if r.id == item.room_id), "None")
-        self.room.setText(room)
-        self.locked.setChecked(item.locked)
+        furniture = isinstance(item, FurnitureItem)
+        self.title.setText("Furniture" if furniture else "Obstacle (part of the apartment)")
+        self.room.setVisible(furniture)
+        self._form.labelForField(self.room).setVisible(furniture)
+        self.locked.setVisible(furniture)
+        locked = False
+        if isinstance(item, FurnitureItem):
+            room = next((r.name for r in doc.apartment.rooms if r.id == item.room_id), "None")
+            self.room.setText(room)
+            self.locked.setChecked(item.locked)
+            locked = item.locked
         self.locked.setEnabled(editable)
-        polygon = isinstance(item.shape, PolygonShape)
-        lengths = shape_edge_lengths(item) if polygon else []
+        polygon = isinstance(item, FurnitureItem) and isinstance(item.shape, PolygonShape)
+        lengths = shape_edge_lengths(item) if isinstance(item, FurnitureItem) and polygon else []
         if len(self.edges) != len(lengths):
             self._rebuild_edges(len(lengths))
         for field, length in zip(self.edges, lengths, strict=True):
             field.setText(format_length(length, doc.settings.display_unit))
-            field.setEnabled(editable and not item.locked)
+            field.setEnabled(editable and not locked)
         self.edges_title.setVisible(polygon)
         for button in self.buttons.values():
             button.setEnabled(editable)
         self.state = state
 
-    def _item(self) -> FurnitureItem | None:
+    def _item(self) -> Placed | None:
         if self.state is None or self.item_id is None:
             return None
         try:
-            return furniture_item(self.state.doc, self.item_id)
+            return placed_item(self.state.doc, self.item_id)
         except KeyError:
             return None
 
@@ -118,13 +130,11 @@ class FurniturePage(QWidget):
         text = self.fields[key].text()
         if text == field_values(item, unit).get(key, ""):
             return
-        self._commit(
-            lambda doc: update_furniture(doc, item.id, **parse_field(item, key, text, unit))
-        )
+        self._commit(lambda doc: update_placed(doc, item.id, **parse_field(item, key, text, unit)))
 
     def _set_locked(self, locked: bool) -> None:
         item = self._item()
-        if item is not None and item.locked != locked:
+        if isinstance(item, FurnitureItem) and item.locked != locked:
             self._commit(lambda doc: set_locked(doc, [item.id], locked))
 
     def _rebuild_edges(self, count: int) -> None:
@@ -141,7 +151,7 @@ class FurniturePage(QWidget):
 
     def _set_length(self, i: int) -> None:
         item = self._item()
-        if item is None or self.state is None:
+        if not isinstance(item, FurnitureItem) or self.state is None:
             return
         unit = self.state.doc.settings.display_unit
         text = self.edges[i].text()
@@ -187,14 +197,17 @@ class SelectionPage(QWidget):
         layout.addLayout(second)
         layout.addStretch()
 
-    def show_items(self, items: list[FurnitureItem], editable: bool) -> None:
+    def show_items(self, items: list[Placed], editable: bool) -> None:
         names = ", ".join(item.name for item in items[:5])
         more = f" and {len(items) - 5} more" if len(items) > 5 else ""
         self.summary.setText(f"{len(items)} items selected: {names}{more}.")
-        grouped = {item.group_id for item in items}
-        self.buttons["Group"].setEnabled(editable and (len(grouped) > 1 or None in grouped))
-        self.buttons["Ungroup"].setEnabled(editable and grouped != {None})
-        self.buttons["Lock"].setEnabled(editable and not all(i.locked for i in items))
-        self.buttons["Unlock"].setEnabled(editable and any(i.locked for i in items))
+        furniture = [i for i in items if isinstance(i, FurnitureItem)]  # obstacles: none
+        grouped = {item.group_id for item in furniture}
+        self.buttons["Group"].setEnabled(
+            editable and bool(furniture) and (len(grouped) > 1 or None in grouped)
+        )
+        self.buttons["Ungroup"].setEnabled(editable and bool(furniture) and grouped != {None})
+        self.buttons["Lock"].setEnabled(editable and not all(i.locked for i in furniture))
+        self.buttons["Unlock"].setEnabled(editable and any(i.locked for i in furniture))
         for label in ("Duplicate", "Delete"):
             self.buttons[label].setEnabled(editable)

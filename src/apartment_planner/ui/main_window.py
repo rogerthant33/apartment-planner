@@ -32,6 +32,8 @@ from apartment_planner.state.furniture import (
     rename_layout,
     selected_furniture,
 )
+from apartment_planner.state.openings import selected_openings
+from apartment_planner.state.placed import selected_obstacles
 from apartment_planner.state.rooms import selected_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.commands import Commands
@@ -114,7 +116,12 @@ class MainWindow(QMainWindow):
 
         self.commands = Commands(self.view)
         self._create_actions()
-        self.tools = ToolsPanel(self.tool_actions.actions(), self.add_actions, self.layout_actions)
+        self.tools = ToolsPanel(
+            self.tool_actions.actions()[:3],
+            [*self.tool_actions.actions()[3:], *self.obstacle_actions],
+            self.add_actions,
+            self.layout_actions,
+        )
         self.tools.room_activated.connect(self._select_room)
         self.tools.furniture_activated.connect(self.commands.select_with_groups)
         self.tools.visibility_changed.connect(self.view.set_hidden)
@@ -130,6 +137,7 @@ class MainWindow(QMainWindow):
         pages.selection_page.buttons["Unlock"].clicked.connect(self.commands.toggle_lock)
         pages.room_page.duplicate.clicked.connect(self.commands.duplicate)
         pages.room_page.delete.clicked.connect(self.view.delete_selection)
+        pages.opening_page.buttons["Delete"].clicked.connect(self.view.delete_selection)
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
         self.tools_panel = self._add_panel("Tools", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
@@ -272,8 +280,8 @@ class MainWindow(QMainWindow):
         settings = state.doc.settings.evolve(apartment_locked=locked)
         state.update_untracked(state.doc.evolve(settings=settings))
         if locked:
-            if self.view.tool is self.view.tools["rect"]:
-                self.set_tool("select")
+            if self.view.tool not in (self.view.tools["select"], self.view.tools["polygon"]):
+                self.set_tool("select")  # the other tools edit the apartment
             state.select(f.id for f in selected_furniture(state.doc, state.selection))
 
     def shortcut(self, command: Callable[[], None]) -> Callable[[], None]:
@@ -400,14 +408,18 @@ class MainWindow(QMainWindow):
         rooms = state is not None and self.view.can_edit_rooms()
         has_room = state is not None and selected_room(state.doc, state.selection) is not None
         furniture = selected_furniture(state.doc, state.selection) if state else []
+        obstacles = state is not None and bool(selected_obstacles(state.doc, state.selection))
+        openings = state is not None and bool(selected_openings(state.doc, state.selection))
         locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
-        self.rect_tool_action.setEnabled(rooms)
+        for action in (self.rect_tool_action, *self.opening_tool_actions, *self.obstacle_actions):
+            action.setEnabled(rooms)
         self.polygon_tool_action.setEnabled(editable)
         self.polygon_tool_action.setText("Custom Shape" if locked else "Polygon Room")
-        for action in (self.delete_action, self.duplicate_action):
-            action.setEnabled(editable and (bool(furniture) or (rooms and has_room)))
+        apartment = rooms and (has_room or obstacles)
+        self.duplicate_action.setEnabled(editable and (bool(furniture) or apartment))
+        self.delete_action.setEnabled(editable and (bool(furniture) or apartment or openings))
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)
@@ -476,14 +488,18 @@ class MainWindow(QMainWindow):
             ("select", "Select", "V"),
             ("rect", "Rectangle Room", "M"),
             ("polygon", "Polygon Room", "P"),  # a custom shape while the apartment is locked
+            ("door", "Door", "D"),
+            ("window", "Window", "W"),
+            ("opening", "Opening", "O"),
         ):
             tool = action(text, lambda _=False, n=name: self.set_tool(n), key)
             tool.setCheckable(True)
             tool.setToolTip(f"{text} ({key})")
             self.tool_actions.addAction(tool)
         self.select_tool_action, self.rect_tool_action, self.polygon_tool_action = (
-            self.tool_actions.actions()
+            self.tool_actions.actions()[:3]
         )
+        self.opening_tool_actions = self.tool_actions.actions()[3:]
         self.lock_action = QAction("Apartment Locked", self)
         self.lock_action.setCheckable(True)
         self.lock_action.setToolTip("While locked, rooms can't be selected or changed")
@@ -531,6 +547,16 @@ class MainWindow(QMainWindow):
             action(text, lambda _=False, t=template: commands.add(t))
             for template, text in (("rect", "Table"), ("round", "Round"), ("l_shape", "L-Shape"))
         ]
+        self.obstacle_actions = [
+            action(text, lambda _=False, t=template: commands.add_obstacle(t))
+            for template, text in (
+                ("column", "Column"),
+                ("radiator", "Radiator"),
+                ("cupboard", "Built-in"),
+            )
+        ]
+        for obstacle_action in self.obstacle_actions:
+            obstacle_action.setToolTip(f"Add a {obstacle_action.text().lower()} obstacle")
         self.layout_actions = [
             action("Add", self.add_layout),
             action("Rename…", self.rename_layout),
@@ -579,6 +605,8 @@ class MainWindow(QMainWindow):
         edit_menu.addActions(self.furniture_actions[:5])
         add_menu = edit_menu.addMenu("Add Furniture")
         add_menu.addActions(self.add_actions)
+        apartment_menu = edit_menu.addMenu("Add to Apartment")
+        apartment_menu.addActions([*self.opening_tool_actions, *self.obstacle_actions])
         edit_menu.addSeparator()
         edit_menu.addAction(self.lock_action)
         view_menu = self.menuBar().addMenu("&View")

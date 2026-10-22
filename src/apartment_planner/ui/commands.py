@@ -9,24 +9,35 @@ from collections.abc import Callable, Iterable
 from apartment_planner.canvas.view import PlanView
 from apartment_planner.geometry.shapes import l_shape
 from apartment_planner.geometry.snapping import snap_to_grid
-from apartment_planner.model import EllipseShape, ProjectDoc, RectShape, Shape
+from apartment_planner.model import EllipseShape, FurnitureItem, ProjectDoc, RectShape, Shape
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
     active_furniture,
     add_furniture,
-    duplicate_furniture,
     group_furniture,
-    move_furniture,
-    rotate_furniture,
     selected_furniture,
     set_locked,
     ungroup_furniture,
     with_groups,
 )
+from apartment_planner.state.placed import (
+    add_obstacle,
+    duplicate_placed,
+    move_placed,
+    rotate_placed,
+    selected_placed,
+)
 from apartment_planner.state.rooms import duplicate_room, selected_room
 
 DUPLICATE_OFFSET = (50.0, 50.0)  # cm, so a copy doesn't hide its original
+
+# What "Add obstacle" places: name and shape.
+OBSTACLE_TEMPLATES: dict[str, tuple[str, Shape]] = {
+    "column": ("Column", RectShape(width=30, depth=30)),
+    "radiator": ("Radiator", RectShape(width=100, depth=10)),
+    "cupboard": ("Built-in cupboard", RectShape(width=120, depth=60)),
+}
 
 # What "Add furniture" places: name, category and shape.
 FURNITURE_TEMPLATES: dict[str, tuple[str, str | None, Shape]] = {
@@ -54,6 +65,16 @@ class Commands:
             return frozenset()
         return frozenset(f.id for f in selected_furniture(state.doc, state.selection))
 
+    def selected_placed_ids(self) -> frozenset[str]:
+        """Selected furniture, or selected obstacles while the apartment can be edited."""
+        state = self.state
+        if state is None:
+            return frozenset()
+        items = selected_placed(state.doc, state.selection)
+        if any(not isinstance(i, FurnitureItem) for i in items) and not self.view.can_edit_rooms():
+            return frozenset()
+        return frozenset(i.id for i in items)
+
     def apply(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         """Commit `change(doc)`, or say why it was refused."""
         self.create(lambda doc: (change(doc), None), select=None)
@@ -77,23 +98,23 @@ class Commands:
             state.select(select(made))
 
     def nudge(self, dx: float, dy: float) -> None:
-        ids = self.selected_furniture_ids()
+        ids = self.selected_placed_ids()
         if ids:
-            self.apply(lambda doc: move_furniture(doc, ids, (dx, dy)))
+            self.apply(lambda doc: move_placed(doc, ids, (dx, dy)))
 
     def rotate(self, degrees: float) -> None:
-        ids = self.selected_furniture_ids()
+        ids = self.selected_placed_ids()
         if ids:
-            self.apply(lambda doc: rotate_furniture(doc, ids, degrees))
+            self.apply(lambda doc: rotate_placed(doc, ids, degrees))
 
     def duplicate(self) -> None:
         state = self.state
         if state is None:
             return
-        ids = self.selected_furniture_ids()
+        ids = self.selected_placed_ids()
         if ids:
             self.create(
-                lambda doc: duplicate_furniture(doc, ids, DUPLICATE_OFFSET),
+                lambda doc: duplicate_placed(doc, ids, DUPLICATE_OFFSET),
                 select=lambda copies: copies,
             )
             return
@@ -140,6 +161,16 @@ class Commands:
             lambda doc: add_furniture(doc, shape, at, name, category),
             select=lambda item_id: {item_id},
         )
+
+    def add_obstacle(self, template: str) -> None:
+        """Place a new obstacle at the centre of the view. Needs an unlocked apartment."""
+        state = self.state
+        if state is None or not self.view.can_edit_rooms():
+            return
+        name, shape = OBSTACLE_TEMPLATES[template]
+        centre = self.view.mapToScene(self.view.viewport().rect().center())
+        at = snap_to_grid((centre.x(), centre.y()), state.doc.settings.grid_size)
+        self.create(lambda doc: add_obstacle(doc, shape, at, name), select=lambda new: {new})
 
     def select_with_groups(self, item_id: str) -> None:
         state = self.state

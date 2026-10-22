@@ -49,8 +49,10 @@ obstacles, then try out several furniture layouts and check what fits.
 Desktop-first main window with three columns.
 
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
-  tools, "add furniture" templates (table, round table, L-shaped corner sofa,
-  placed at the centre of the view), the room list and the furniture list.
+  tools, "add to the apartment" tools and obstacle templates (enabled while
+  the apartment is unlocked), "add furniture" templates (table, round table,
+  L-shaped corner sofa, placed at the centre of the view), the room list and
+  the furniture list.
   Unticking an item in the furniture list hides it from the canvas for this
   session only; hidden items can't be selected.
 - **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels and
@@ -133,12 +135,25 @@ rejected inline. Overlapping rooms are allowed but produce a warning.
   is part of fit checking.
 - **Windows:** drawn as a thin double line across the edge.
 - Plain openings (no door) are supported for archways.
+- The Door, Window and Opening tools (D, W, O) place one where you click,
+  on the nearest wall within 25 px, at a grid step along it, with a default
+  width (door 80 cm, window 120 cm, opening 90 cm; at most the wall's
+  length). A new door hinges at the wall's start and swings in.
+- Drag an opening along its wall or onto another wall (of any room) to move
+  it. The properties panel edits its kind, width (at most the wall's
+  length), offset, and a door's hinge and swing. Changing a door to another
+  kind drops its hinge and swing.
 
 ### Fixed obstacles
 
 Columns, built-in cupboards, radiators and so on. Same shape model as
 furniture, but they belong to the apartment (shared across layouts) and are
-edited only while the apartment is unlocked.
+edited only while the apartment is unlocked. They are drawn hatched, and are
+added from templates (Column 30 × 30, Radiator 100 × 10, Built-in cupboard
+120 × 60 cm) at the centre of the view. They move, resize, rotate, nudge,
+duplicate and delete like furniture, but have no category, clearance,
+product details, lock or group. A selection holds either furniture or
+obstacles: Shift+clicking the other kind starts a new selection.
 
 ### Apartment lock
 
@@ -213,6 +228,7 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
 | V, M, P | Select tool, rectangle room tool, polygon tool |
+| D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |
 
