@@ -227,14 +227,14 @@ def set_outline(
     apartment = doc.apartment.evolve(
         rooms=tuple(updated if r.id == room_id else r for r in doc.apartment.rooms),
         openings=tuple(
-            _clamped(reattach(o), updated) if o.room_id == room_id else o
+            clamp_opening(reattach(o), updated) if o.room_id == room_id else o
             for o in doc.apartment.openings
         ),
     )
     return doc.evolve(apartment=apartment)
 
 
-def _clamped(opening: Opening, target: Room) -> Opening:
+def clamp_opening(opening: Opening, target: Room) -> Opening:
     """The opening moved along its edge just enough to lie on it."""
     i = _index(target, opening.edge_start_vertex_id)
     length = _length(target.vertices[i], _next(target, i))

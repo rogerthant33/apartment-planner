@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from apartment_planner.model import EllipseShape, FurnitureMeta, RectShape
+from apartment_planner.model import EllipseShape, FurnitureMeta, Obstacle, RectShape
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture_fields import field_values, parse_field
 from tests.factories import item, polygon_shape, rect_item
@@ -28,6 +28,21 @@ def test_polygons_and_ellipses_show_the_fields_they_have() -> None:
 
     assert "width" not in field_values(triangle, "cm")
     assert field_values(table, "cm")["width"] == "90 cm"
+
+
+def test_obstacles_have_no_furniture_details() -> None:
+    column = Obstacle(id="c", name="Column", shape=RectShape(width=30, depth=30), x=0, y=0)
+
+    assert set(field_values(column, "cm")) == {
+        "name",
+        "x",
+        "y",
+        "rotation",
+        "width",
+        "depth",
+        "color",
+        "notes",
+    }
 
 
 @pytest.mark.parametrize(
