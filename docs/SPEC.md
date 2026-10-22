@@ -483,7 +483,8 @@ class Apartment:
 class Room:
     id: ID
     name: str
-    vertices: list[Vertex]          # >= 3, world cm, normalised to clockwise on screen
+    vertices: list[Vertex]          # >= 3, world cm, clockwise on screen (counter-clockwise
+                                    # is rejected; drawing tools normalise before saving)
     color: str | None = None        # "#rrggbb"
 
 class DoorSpec:
