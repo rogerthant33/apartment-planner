@@ -1,8 +1,9 @@
+import math
 from typing import Literal
 
 import pytest
-from shapely.geometry import LineString
 
+from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
 from apartment_planner.geometry.openings import (
     door_swing,
     edge,
@@ -12,10 +13,21 @@ from apartment_planner.geometry.openings import (
     opening_span,
     wall_pieces,
 )
-from apartment_planner.model import DoorSpec, Opening
+from apartment_planner.model import DoorSpec, Opening, Room, Vertex
 from tests.factories import rect_room
 
 ROOM = rect_room(0, 0, 400, 300)  # clockwise: top edge runs left to right
+# No axis-aligned edge and no corner at the origin, with vertex IDs that don't sort in
+# drawing order. The edge from v-c runs to v-a: 400 cm along the unit vector (0.8, 0.6).
+SLOPED = Room(
+    id="sloped",
+    name="Sloped",
+    vertices=(
+        Vertex(id="v-b", x=40, y=380),
+        Vertex(id="v-c", x=100, y=60),
+        Vertex(id="v-a", x=420, y=300),
+    ),
+)
 
 
 Hinge = Literal["start", "end"]
@@ -59,16 +71,46 @@ def test_door_swing_is_a_quarter_circle_on_the_chosen_side(
     swing_area = door_swing(ROOM, door(0, 100, hinge, swing))
 
     assert swing_area.bounds == pytest.approx(bounds)
-    assert swing_area.area == pytest.approx(3.14159 * 80**2 / 4, rel=0.01)
+    # A quarter of the polygon a circle becomes at the shared resolution.
+    n = ELLIPSE_SEGMENTS
+    assert swing_area.area == pytest.approx(n / 8 * math.sin(2 * math.pi / n) * 80**2)
 
 
-def test_hinge_side_decides_where_the_open_leaf_lies() -> None:
-    at_start = door_swing(ROOM, door(0, 100, "start"))
-    at_end = door_swing(ROOM, door(0, 100, "end"))
+@pytest.mark.parametrize(
+    ("hinge", "swing", "hinge_at", "tip_at", "open_at"),
+    [
+        ("start", "in", (230, 157.5), (290, 202.5), (185, 217.5)),
+        ("start", "out", (230, 157.5), (290, 202.5), (275, 97.5)),
+        ("end", "in", (290, 202.5), (230, 157.5), (245, 262.5)),
+        ("end", "out", (290, 202.5), (230, 157.5), (335, 142.5)),
+    ],
+)
+def test_door_leaf_turns_on_its_hinge_to_the_chosen_side_of_a_sloping_wall(
+    hinge: Hinge,
+    swing: Swing,
+    hinge_at: tuple[float, float],
+    tip_at: tuple[float, float],
+    open_at: tuple[float, float],
+) -> None:
+    sloped_door = Opening(
+        id="d",
+        kind="door",
+        room_id=SLOPED.id,
+        # Built at run time, like an ID read from a file: equal to the vertex's, not
+        # the same object.
+        edge_start_vertex_id="".join(["v-", "c"]),
+        offset=200,
+        width=75,  # odd, so half of it isn't whole
+        door=DoorSpec(hinge=hinge, swing=swing),
+    )
 
-    assert at_start.buffer(0.5).contains(LineString([(60, 0), (60, 80)]))
-    assert at_end.buffer(0.5).contains(LineString([(140, 0), (140, 80)]))
-    assert not at_start.buffer(0.5).contains(LineString([(140, 0), (140, 80)]))
+    outline = door_swing(SLOPED, sloped_door).exterior.coords
+
+    # From the hinge, round the arc from the closed leaf (in the doorway) to the open one.
+    assert outline[0] == pytest.approx(hinge_at)
+    assert outline[1] == pytest.approx(tip_at)
+    assert outline[-2] == pytest.approx(open_at)
+    assert all(math.dist(p, hinge_at) == pytest.approx(75) for p in outline[1:-1])
 
 
 def test_windows_do_not_swing() -> None:
@@ -89,11 +131,38 @@ def test_nearest_edge_finds_the_wall_and_the_distance_along_it() -> None:
     assert nearest_edge([ROOM], (200, 150), tolerance=5) is None
 
 
-def test_opening_at_picks_the_nearest_span_within_tolerance() -> None:
-    near, far = door(0, 100).evolve(id="near"), door(0, 300).evolve(id="far")
+def test_nearest_edge_takes_the_nearest_of_several_in_reach() -> None:
+    other = rect_room(400, 0, 200, 300)
 
-    assert opening_at([ROOM], [near, far], (130, 4), tolerance=5) == "near"
-    assert opening_at([ROOM], [near, far], (200, 4), tolerance=5) is None
+    # In visiting order: ROOM's right wall 4 cm away, its bottom wall 3 cm, then the
+    # other room's bottom wall 5 cm and its left wall 4 cm.
+    found = nearest_edge([ROOM, other], (396, 297), tolerance=5)
+
+    assert found == (ROOM, ROOM.vertices[2].id, 4)
+
+
+def test_nearest_edge_reaches_exactly_the_tolerance() -> None:
+    found = nearest_edge([ROOM], (200, 5), tolerance=5)
+
+    assert found == (ROOM, ROOM.vertices[0].id, 200)
+
+
+LEFT = door(0, 100).evolve(id="left")  # spans x 60..140 on the top wall
+RIGHT = door(0, 185).evolve(id="right")  # spans x 145..225
+
+
+@pytest.mark.parametrize("openings", [[LEFT, RIGHT], [RIGHT, LEFT]])
+def test_opening_at_picks_the_nearest_span_within_tolerance(openings: list[Opening]) -> None:
+    # 3.2 cm from one span's end and 5 cm (the tolerance) from the other's.
+    assert opening_at([ROOM], openings, (141, 3), tolerance=5) == "left"
+    assert opening_at([ROOM], openings, (144, 3), tolerance=5) == "right"
+    # Equally near both: the first listed wins.
+    assert opening_at([ROOM], openings, (142.5, 3), tolerance=5) == openings[0].id
+    assert opening_at([ROOM], openings, (200, 6), tolerance=5) is None
+
+
+def test_opening_at_reaches_exactly_the_tolerance() -> None:
+    assert opening_at([ROOM], [RIGHT], (141, 3), tolerance=5) == "right"
 
 
 def window(edge_index: int, offset: float, width: float = 80) -> Opening:

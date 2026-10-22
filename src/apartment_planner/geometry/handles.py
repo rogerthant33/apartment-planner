@@ -84,7 +84,8 @@ def resized(item: Placed, handle: Handle, world: XY) -> tuple[Shape, XY]:
     The opposite side or corner stays put; sizes never go below MIN_EDGE_LENGTH.
     """
     size = box_size(item.shape)
-    if size is None or handle is Handle.ROTATE:
+    # pragma below: Handle members are singletons, so `==` behaves like `is`.
+    if size is None or handle is Handle.ROTATE:  # pragma: no mutate
         raise ValueError(f"{handle} doesn't resize {item.shape.type} shapes")
     sx, sy = _SIDES[handle]
     hw, hd = size[0] / 2, size[1] / 2
@@ -101,7 +102,8 @@ def _span(side: int, half: float, pointer: float) -> tuple[float, float]:
     if side == 0:
         return 2 * half, 0.0
     fixed = -side * half
-    length = max((pointer - fixed) * side, MIN_EDGE_LENGTH)
+    # `side` first, so a `/` mutant isn't equivalent (dividing by ±1 is multiplying).
+    length = max(side * (pointer - fixed), MIN_EDGE_LENGTH)
     return length, fixed + side * length / 2
 
 

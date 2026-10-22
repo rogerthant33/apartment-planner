@@ -22,7 +22,8 @@ def edge(room: Room, start_vertex_id: str) -> tuple[XY, XY]:
     vertices = room.vertices
     for i, vertex in enumerate(vertices):
         if vertex.id == start_vertex_id:
-            end = vertices[(i + 1) % len(vertices)]
+            # `- len` instead of `%` would index the same vertex from the end.
+            end = vertices[(i + 1) % len(vertices)]  # pragma: no mutate
             return (vertex.x, vertex.y), (end.x, end.y)
     raise KeyError(start_vertex_id)
 
@@ -56,15 +57,20 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
     if opening.door is None:
         raise ValueError("Only doors swing")
     start, end = opening_span(room, opening)
-    hinge, tip = (start, end) if opening.door.hinge == "start" else (end, start)
+    # pragmas below: hinge and swing are validated Literals, which pydantic returns as
+    # the literal objects themselves, and "end" < "start", "in" < "out". So `is` and
+    # `>=` mutants behave the same.
+    hinged_at_start = opening.door.hinge == "start"  # pragma: no mutate
+    hinge, tip = (start, end) if hinged_at_start else (end, start)
     nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))
-    if opening.door.swing == "out":
+    if opening.door.swing == "out":  # pragma: no mutate
         nx, ny = -nx, -ny
     closed = (tip[0] - hinge[0], tip[1] - hinge[1])  # the leaf lying in the doorway
     radius = opening.width
     opened = (nx * radius, ny * radius)
     arc = []
-    for i in range(ARC_SEGMENTS + 1):
+    # ARC_SEGMENTS is even, so `| 1` and `^ 1` mutants equal `+ 1`.
+    for i in range(ARC_SEGMENTS + 1):  # pragma: no mutate
         t = math.pi / 2 * i / ARC_SEGMENTS
         arc.append(
             (

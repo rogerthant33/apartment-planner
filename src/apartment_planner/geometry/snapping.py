@@ -104,7 +104,7 @@ def snap_move(
     anchor: XY,
     delta: XY,
     edges: Sequence[tuple[XY, XY]],
-    *,
+    *,  # pragma: no mutate (as for `snap`)
     grid: float | None,
     tolerance: float,
 ) -> XY:
@@ -135,7 +135,7 @@ def snap_room_move(
     corners: Sequence[XY],
     delta: XY,
     targets: SnapTargets,
-    *,
+    *,  # pragma: no mutate (as for `snap`)
     grid: float | None,
     tolerance: float,
 ) -> XY:
