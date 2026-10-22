@@ -17,6 +17,7 @@ from apartment_planner.model import (
     FurnitureItem,
     Group,
     Layout,
+    Placed,
     Point,
     PolygonShape,
     ProjectDoc,
@@ -131,7 +132,7 @@ def rotate_furniture(doc: ProjectDoc, ids: Iterable[str], degrees: float) -> Pro
     return _replace(doc, turned)
 
 
-def footprint_centre(items: Sequence[FurnitureItem]) -> XY:
+def footprint_centre(items: Sequence[Placed]) -> XY:
     """Centre of the bounding box around the items' footprints."""
     bounds = [placed_polygon(item).bounds for item in items]
     left, top = min(b[0] for b in bounds), min(b[1] for b in bounds)
