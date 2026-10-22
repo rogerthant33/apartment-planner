@@ -78,6 +78,12 @@ def rename_room(doc: ProjectDoc, room_id: str, name: str) -> ProjectDoc:
     return _with_rooms(doc, (updated if r.id == room_id else r for r in doc.apartment.rooms))
 
 
+def recolour_room(doc: ProjectDoc, room_id: str, color: str | None) -> ProjectDoc:
+    """Fill the room with `color` (#rrggbb), or the default fill for None."""
+    changed = room(doc, room_id).evolve(color=color)
+    return _with_rooms(doc, [changed if r.id == room_id else r for r in doc.apartment.rooms])
+
+
 def delete_room(doc: ProjectDoc, room_id: str) -> ProjectDoc:
     """Remove a room with its openings. Furniture placed in it no longer names a room."""
     apartment = doc.apartment.evolve(

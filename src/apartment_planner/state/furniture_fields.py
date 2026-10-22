@@ -4,7 +4,6 @@ typed text changes. Obstacles have no category, clearance or product details.
 Pure, so the panel only shows text and commits what `parse_field` returns.
 """
 
-import re
 from typing import Any
 
 from apartment_planner.geometry.handles import box_size, with_box_size
@@ -20,17 +19,16 @@ FIELDS: dict[str, str] = {
     "rotation": "Rotation",
     "width": "Width",
     "depth": "Depth",
-    "color": "Colour",
     "clearance": "Clearance",
-    "notes": "Notes",
     "product": "Product",
     "url": "Link",
     "price": "Price",
+    "notes": "Notes",
 }
-"""Field keys and their labels, in the order the panel shows them."""
+"""Field keys and their labels, in the order the panel shows them. The colour is
+picked with a button, not typed."""
 
 META_FIELDS = ("product", "url", "price")
-_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def field_values(item: Placed, unit: Unit) -> dict[str, str]:
@@ -40,7 +38,6 @@ def field_values(item: Placed, unit: Unit) -> dict[str, str]:
         "x": format_length(item.x, unit),
         "y": format_length(item.y, unit),
         "rotation": f"{item.rotation:g}°",
-        "color": item.color or "",
         "notes": item.notes or "",
     }
     if isinstance(item, FurnitureItem):
@@ -89,10 +86,6 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
                 raise EditError(f"{label}: enter a length greater than 0, such as 120 or 1.2 m.")
             width, depth = (length, size[1]) if key == "width" else (size[0], length)
             return {"shape": with_box_size(item.shape, width, depth)}
-        case "color":
-            if text and not _COLOR.match(text):
-                raise EditError(f"{label}: enter a colour such as #a0b0c0, or leave it empty.")
-            return {"color": text or None}
         case "clearance":
             if not text:
                 return {"clearance": None}

@@ -168,3 +168,20 @@ def test_shortcuts_work_without_menu_entries(window: MainWindow) -> None:
 
     assert len(furniture(window)) == 1
     assert first.id not in {f.id for f in furniture(window)}
+
+
+def test_colour_is_picked_from_the_colour_dialog_and_can_be_reset(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    add_table(window)
+    picker = window.properties.furniture_page.colour
+    monkeypatch.setattr(dialogs, "choose_colour", lambda parent, current: "#a0b0c0")
+
+    picker.swatch.click()
+    assert furniture(window)[-1].color == "#a0b0c0"
+    picker.reset.click()
+
+    assert furniture(window)[-1].color is None
+    window.undo_action.trigger()
+    assert furniture(window)[-1].color == "#a0b0c0"
+    assert picker.colour == "#a0b0c0"

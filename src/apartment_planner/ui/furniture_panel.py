@@ -24,6 +24,7 @@ from apartment_planner.state.furniture import (
 from apartment_planner.state.furniture_fields import FIELDS, field_values, parse_field
 from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
+from apartment_planner.ui.colour_button import ColourButton
 from apartment_planner.ui.inline_errors import error_label, show_error
 
 
@@ -52,11 +53,24 @@ class FurniturePage(QWidget):
         self.fields: dict[str, QLineEdit] = {}
         form = QFormLayout()
         self._form = form
+        self.colour = ColourButton()
+        self.colour.chosen.connect(self._set_colour)
         for key, label in FIELDS.items():
             field = QLineEdit()
             field.editingFinished.connect(lambda key=key: self._commit_field(key))
             form.addRow(label, field)
             self.fields[key] = field
+            if key == "depth":
+                form.addRow("Colour", self.colour)
+        clearance = self.fields["clearance"]
+        clearance.setPlaceholderText("None")
+        tip = (
+            "Space to keep free around this item, such as 60 cm in front of a wardrobe "
+            "or around a dining table. Anything closer is listed in Fit Checks. "
+            "Leave it empty for none."
+        )
+        clearance.setToolTip(tip)
+        form.labelForField(clearance).setToolTip(tip)
         self.title = QLabel()
         self.room = QLabel()
         form.addRow("Room", self.room)
@@ -90,6 +104,8 @@ class FurniturePage(QWidget):
             self._form.labelForField(field).setVisible(visible)
             field.setText(values.get(key, ""))
             field.setEnabled(editable)
+        self.colour.setEnabled(editable)
+        self.colour.show_colour(item.color)
         furniture = isinstance(item, FurnitureItem)
         self.title.setText("Furniture" if furniture else "Obstacle (part of the apartment)")
         self.room.setVisible(furniture)
@@ -131,6 +147,11 @@ class FurniturePage(QWidget):
         if text == field_values(item, unit).get(key, ""):
             return
         self._commit(lambda doc: update_placed(doc, item.id, **parse_field(item, key, text, unit)))
+
+    def _set_colour(self, colour: str | None) -> None:
+        item = self._item()
+        if item is not None:
+            self._commit(lambda doc: update_placed(doc, item.id, color=colour))
 
     def _set_locked(self, locked: bool) -> None:
         item = self._item()

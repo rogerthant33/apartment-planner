@@ -182,14 +182,17 @@ locked; that alone doesn't count as a change to save.
 
 `id`, `name`, `category?`, `shape`, `x`, `y` (world position of the local
 origin), `rotation`, `color?`, `notes?`, `room_id?`, `locked`, `group_id?`,
-`clearance?` (cm, overrides the project default), `meta?` (`product`, `url`,
-`price`).
+`clearance?` (cm of free space wanted around the item; see §7), `meta?`
+(`product`, `url`, `price`).
 
 `room_id` is kept up to date automatically: it names the room the item's
 origin stands in. New items get numbered names ("Table", "Table 2", …). The
 properties panel edits every field of a single item (width and depth for
 rectangles and ellipses, edge lengths for polygons); several selected items
-get group, ungroup, lock, unlock, duplicate and delete.
+get group, ungroup, lock, unlock, duplicate and delete. The fill colour is
+picked with the system colour dialog (with a button back to the default
+fill), for furniture, obstacles and rooms alike. Notes come last, after the
+product details. Hovering over Clearance explains it.
 
 ### Manipulation
 

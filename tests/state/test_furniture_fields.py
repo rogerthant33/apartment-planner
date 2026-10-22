@@ -40,7 +40,6 @@ def test_obstacles_have_no_furniture_details() -> None:
         "rotation",
         "width",
         "depth",
-        "color",
         "notes",
     }
 
@@ -54,7 +53,6 @@ def test_obstacles_have_no_furniture_details() -> None:
         ("rotation", "37,5°", {"rotation": 37.5}),
         ("width", "1.8 m", {"shape": RectShape(width=180, depth=90)}),
         ("depth", "100", {"shape": RectShape(width=200, depth=100)}),
-        ("color", "#A0b0C0", {"color": "#A0b0C0"}),
         ("clearance", "", {"clearance": None}),
         ("clearance", "0.8 m", {"clearance": 80}),
         ("price", "", {"meta": FurnitureMeta(product="Söderhamn")}),
@@ -82,7 +80,6 @@ def test_clearing_the_last_meta_field_drops_meta() -> None:
         ("x", "left", "X: enter a position"),
         ("rotation", "quarter", "Rotation: enter an angle"),
         ("width", "0", "Width: enter a length greater than 0"),
-        ("color", "red", "Colour: enter a colour"),
         ("clearance", "lots", "Clearance: enter a length"),
         ("price", "cheap", "Price: enter an amount"),
         ("price", "-5", "Price: enter an amount of 0 or more"),

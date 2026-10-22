@@ -3,8 +3,10 @@
 from enum import StrEnum
 from pathlib import Path
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QColorDialog,
     QDialog,
     QFileDialog,
     QInputDialog,
@@ -67,6 +69,12 @@ def open_image(parent: QWidget | None, folder: Path) -> Path | None:
         parent, "Import Background Image", str(folder), "Images (*.png *.jpg *.jpeg *.webp)"
     )
     return Path(path) if path else None
+
+
+def choose_colour(parent: QWidget | None, current: str | None) -> str | None:
+    """A colour as #rrggbb, or None if the user cancels."""
+    colour = QColorDialog.getColor(QColor(current or "#cbc4b8"), parent, "Choose Colour")
+    return colour.name() if colour.isValid() else None
 
 
 def ask_export(parent: QWidget | None) -> ExportChoice | None:

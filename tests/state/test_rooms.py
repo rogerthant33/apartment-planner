@@ -21,6 +21,7 @@ from apartment_planner.state.rooms import (
     insert_vertex,
     move_vertex,
     outline_problem,
+    recolour_room,
     rename_room,
     room,
     selected_room,
@@ -92,6 +93,16 @@ def test_rename_trims_and_refuses_empty_names() -> None:
     assert room(rename_room(doc, r.id, "  Kitchen "), r.id).name == "Kitchen"
     with pytest.raises(EditError, match="Enter a name"):
         rename_room(doc, r.id, "   ")
+
+
+def test_recolour_changes_only_that_room() -> None:
+    doc, r = with_room()
+    doc, _ = add_room(doc, [(400, 0), (600, 0), (600, 300), (400, 300)])
+
+    doc = recolour_room(doc, r.id, "#a0b0c0")
+
+    assert [x.color for x in doc.apartment.rooms] == ["#a0b0c0", None]
+    assert room(recolour_room(doc, r.id, None), r.id).color is None
 
 
 def test_delete_room_removes_its_openings_and_unassigns_furniture() -> None:

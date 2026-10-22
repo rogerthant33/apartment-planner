@@ -32,12 +32,14 @@ from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import selected_openings
 from apartment_planner.state.placed import selected_placed
 from apartment_planner.state.rooms import (
+    recolour_room,
     rename_room,
     selected_room,
     set_edge_length,
 )
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
 from apartment_planner.ui.background_panel import BackgroundBox
+from apartment_planner.ui.colour_button import ColourButton
 from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
 from apartment_planner.ui.inline_errors import error_label, show_error
 from apartment_planner.ui.opening_panel import OpeningPage
@@ -162,6 +164,8 @@ class RoomPage(QWidget):
         self.name = QLineEdit()
         self.name.editingFinished.connect(self._rename)
         self.area = QLabel()
+        self.colour = ColourButton()
+        self.colour.chosen.connect(self._set_colour)
         self.edges: list[QLineEdit] = []
         self._edge_form = QFormLayout()
         self.error = error_label()
@@ -175,6 +179,7 @@ class RoomPage(QWidget):
         form = QFormLayout()
         form.addRow("Name", self.name)
         form.addRow("Area", self.area)
+        form.addRow("Colour", self.colour)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(QLabel("Edge lengths"))
@@ -195,8 +200,9 @@ class RoomPage(QWidget):
             self._rebuild_edges(len(lengths))
         for field, length in zip(self.edges, lengths, strict=True):
             field.setText(format_length(length, unit))
-        for widget in (self.name, *self.edges, self.duplicate, self.delete):
+        for widget in (self.name, *self.edges, self.duplicate, self.delete, self.colour):
             widget.setEnabled(editable)
+        self.colour.show_colour(room.color)
 
     def _rebuild_edges(self, count: int) -> None:
         for field in self.edges:
@@ -219,6 +225,11 @@ class RoomPage(QWidget):
         room = self._room()
         if room is not None and self.state is not None and self.name.text() != room.name:
             self._commit(lambda doc: rename_room(doc, room.id, self.name.text()))
+
+    def _set_colour(self, colour: str | None) -> None:
+        room = self._room()
+        if room is not None and self.state is not None:
+            self._commit(lambda doc: recolour_room(doc, room.id, colour))
 
     def _set_length(self, i: int) -> None:
         room = self._room()
