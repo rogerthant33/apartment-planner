@@ -49,7 +49,10 @@ obstacles, then try out several furniture layouts and check what fits.
 Desktop-first main window with three columns.
 
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
-  tools, object list with visibility toggles.
+  tools, "add furniture" templates (table, round table, L-shaped corner sofa,
+  placed at the centre of the view), the room list and the furniture list.
+  Unticking an item in the furniture list hides it from the canvas for this
+  session only; hidden items can't be selected.
 - **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels and
   warnings. Zoom, pan, selection, drag, resize and rotate.
 - **Right panel:** properties of the selection (numeric dimensions, position,
@@ -160,22 +163,36 @@ origin), `rotation`, `color?`, `notes?`, `room_id?`, `locked`, `group_id?`,
 `clearance?` (cm, overrides the project default), `meta?` (`product`, `url`,
 `price`).
 
+`room_id` is kept up to date automatically: it names the room the item's
+origin stands in. New items get numbered names ("Table", "Table 2", …). The
+properties panel edits every field of a single item (width and depth for
+rectangles and ellipses, edge lengths for polygons); several selected items
+get group, ungroup, lock, unlock, duplicate and delete.
+
 ### Manipulation
 
-- Select (click, Shift+click, rubber band), drag, move multiple selected
-  items.
+- Select (click, Shift+click, rubber band touching the items), drag, move
+  multiple selected items. Furniture can be selected whether or not the
+  apartment is locked.
 - Resize with handles or numeric input; rotate with a handle (snaps to 15°
-  increments, hold Alt for free rotation) or numeric input.
-- Duplicate, delete, rename, group/ungroup (groups select and move together),
-  lock.
-- Snap to grid, to room edges (flush against a wall), and to other items'
-  edges.
+  increments, hold Alt for free rotation) or numeric input. A single item
+  turns about its origin; several turn about the centre of their footprints.
+- Duplicate (copies are unlocked and offset by 50 cm; copies of a group form a
+  new group), delete, rename, group/ungroup (groups select and move together;
+  a group with fewer than two members dissolves), lock (a locked item can't be
+  moved, resized, rotated or deleted, but can be renamed and unlocked).
+- Snap to room edges (flush against a wall) and to other items' edges when a
+  corner comes within 10 px of one; otherwise the item's origin snaps to the
+  grid. Alt suspends snapping.
 
 ### Custom polygon drawing
 
-Click points; close on the first point or with Enter; Escape cancels. Show
-edge lengths while drawing and after creation. Edit vertices by dragging or
-numerically. Validated like rooms.
+The polygon tool (P) draws a room while the apartment is unlocked and a
+custom furniture shape while it is locked. Click points; close on the first
+point or with Enter; Escape cancels. Show edge lengths while drawing and
+after creation. Edit vertices by dragging or numerically. Validated like
+rooms (either winding is fine). The shape's origin is the centre of its
+bounding box.
 
 ### Keyboard shortcuts
 

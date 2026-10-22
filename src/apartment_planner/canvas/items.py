@@ -6,8 +6,18 @@ import math
 from collections.abc import Sequence
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
+    QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsPathItem,
     QGraphicsPolygonItem,
@@ -19,7 +29,15 @@ from PySide6.QtWidgets import (
 from apartment_planner.canvas import style
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.geometry.transform import XY
-from apartment_planner.model import Room
+from apartment_planner.model import (
+    EllipseShape,
+    FurnitureItem,
+    Placed,
+    PolygonShape,
+    RectShape,
+    Room,
+    Shape,
+)
 from apartment_planner.state.units import Unit, format_area, format_length
 
 
@@ -119,6 +137,56 @@ class RoomItem(QGraphicsPolygonItem):
             ]
 
 
+class RotateHandleItem(QGraphicsEllipseItem):
+    """The round handle that turns a selected item, of constant screen size."""
+
+    def __init__(self, point: XY) -> None:
+        half = style.HANDLE_PX / 2
+        super().__init__(-half, -half, style.HANDLE_PX, style.HANDLE_PX)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setPos(*point)
+        self.setPen(cosmetic_pen(style.ACCENT, 1.5))
+        self.setBrush(QColor("white"))
+        self.setZValue(3)
+
+
+def shape_path(shape: Shape) -> QPainterPath:
+    """A shape in its local coordinates; ellipses are drawn as true ellipses."""
+    path = QPainterPath()
+    match shape:
+        case RectShape(width=w, depth=d):
+            path.addRect(QRectF(-w / 2, -d / 2, w, d))
+        case EllipseShape(rx=rx, ry=ry):
+            path.addEllipse(QPointF(0, 0), rx, ry)
+        case PolygonShape(points=points):
+            path.addPolygon(QPolygonF([QPointF(p.x, p.y) for p in points]))
+            path.closeSubpath()
+    return path
+
+
+class PlacedItem(QGraphicsPathItem):
+    """A furniture item (or obstacle) placed at its origin and turned by its rotation."""
+
+    def __init__(self, item: Placed, unit: Unit, *, selected: bool) -> None:
+        super().__init__(shape_path(item.shape))
+        self.item_id = item.id
+        self.setPos(item.x, item.y)
+        self.setRotation(item.rotation)
+        locked = isinstance(item, FurnitureItem) and item.locked
+        outline = style.ACCENT if selected else style.FURNITURE_OUTLINE
+        self.setPen(cosmetic_pen(outline, 1.5, dashed=locked))
+        self.setBrush(QBrush(QColor(item.color) if item.color else style.FURNITURE_FILL))
+        self.setZValue(1)
+        self.label = TextLabel(item.name + (" (locked)" if locked else ""), self)
+        self.edge_labels: list[TextLabel] = []
+        if selected and isinstance(item.shape, PolygonShape):
+            corners = [(p.x, p.y) for p in item.shape.points]
+            for a, b in zip(corners, [*corners[1:], corners[0]], strict=True):
+                label = TextLabel(format_length(math.dist(a, b), unit), self)
+                label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+                self.edge_labels.append(label)
+
+
 class PreviewItem(QGraphicsPathItem):
     """What a drag or a drawing tool would produce: red while it isn't valid."""
 
@@ -126,15 +194,34 @@ class PreviewItem(QGraphicsPathItem):
         super().__init__()
         self.setZValue(10)
         self.valid = True
+        self._labels: list[TextLabel] = []
 
-    def show_outline(self, points: Sequence[XY], *, closed: bool, valid: bool) -> None:
+    def show_outline(
+        self,
+        points: Sequence[XY],
+        *,
+        closed: bool,
+        valid: bool,
+        labels: Sequence[tuple[XY, str]] = (),
+    ) -> None:
+        self.show_outlines([points], closed=closed, valid=valid, labels=labels)
+
+    def show_outlines(
+        self,
+        outlines: Sequence[Sequence[XY]],
+        *,
+        closed: bool,
+        valid: bool,
+        labels: Sequence[tuple[XY, str]] = (),
+    ) -> None:
         path = QPainterPath()
-        if points:
-            path.moveTo(*points[0])
-            for point in points[1:]:
-                path.lineTo(*point)
-            if closed:
-                path.closeSubpath()
+        for points in outlines:
+            if points:
+                path.moveTo(*points[0])
+                for point in points[1:]:
+                    path.lineTo(*point)
+                if closed:
+                    path.closeSubpath()
         self.valid = valid
         color = style.ACCENT if valid else style.INVALID
         self.setPen(cosmetic_pen(color, style.OUTLINE_PX, dashed=True))
@@ -142,8 +229,25 @@ class PreviewItem(QGraphicsPathItem):
         fill.setAlpha(40)
         self.setBrush(fill if closed else Qt.BrushStyle.NoBrush)
         self.setPath(path)
+        self._set_labels(labels)
         self.show()
 
     def clear(self) -> None:
         self.setPath(QPainterPath())
+        self._set_labels(())
         self.hide()
+
+    @property
+    def label_texts(self) -> list[str]:
+        return [label.text for label in self._labels]
+
+    def _set_labels(self, labels: Sequence[tuple[XY, str]]) -> None:
+        for label in self._labels:
+            scene = label.scene()
+            if scene is not None:
+                scene.removeItem(label)
+        self._labels = []
+        for position, text in labels:
+            label = TextLabel(text, self)
+            label.setPos(*position)
+            self._labels.append(label)

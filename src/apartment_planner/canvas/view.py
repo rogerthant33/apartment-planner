@@ -16,19 +16,21 @@ from PySide6.QtGui import (
     QWheelEvent,
 )
 from PySide6.QtWidgets import QGraphicsView, QWidget
+from shapely import unary_union
 
 from apartment_planner.canvas import style
 from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.canvas.tools import (
     Pointer,
-    PolygonRoomTool,
+    PolygonTool,
     RectRoomTool,
     SelectTool,
     Tool,
 )
-from apartment_planner.geometry.shapes import room_polygon
+from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
+from apartment_planner.state.furniture import delete_furniture, selected_furniture
 from apartment_planner.state.rooms import delete_selection
 
 MIN_SCALE = 0.02  # screen px per cm: 50 m across a 1000 px window
@@ -52,16 +54,21 @@ class PlanView(QGraphicsView):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._state: EditorState | None = None
         self.editable = False
+        self.hidden: frozenset[str] = frozenset()  # furniture hidden from view, not saved
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
-            "polygon": PolygonRoomTool(self),
+            "polygon": PolygonTool(self),
         }
         self.tool: Tool = self.tools["select"]
         self._pan_from: QPoint | None = None
         self._space_held = False
 
     # Host protocol for tools
+
+    @property
+    def current_state(self) -> EditorState | None:
+        return self._state
 
     @property
     def state(self) -> EditorState:
@@ -80,15 +87,28 @@ class PlanView(QGraphicsView):
         )
 
     def delete_selection(self) -> None:
-        """Delete the selected vertex, or else the selected room."""
-        if not self.can_edit_rooms():
+        """Delete the selected furniture, or else the selected vertex or room."""
+        state = self._state
+        if state is None or not self.editable:
+            return
+        furniture = selected_furniture(state.doc, state.selection)
+        if not furniture and not self.can_edit_rooms():
             return
         try:
-            doc = delete_selection(self.state.doc, self.state.selection)
+            if furniture:
+                doc = delete_furniture(state.doc, [f.id for f in furniture])
+            else:
+                doc = delete_selection(state.doc, state.selection)
         except EditError as error:
             self.notify(str(error))
             return
-        self.state.commit(doc)
+        state.commit(doc)
+
+    def set_hidden(self, ids: frozenset[str]) -> None:
+        self.hidden = ids
+        if self._state is not None:
+            self._state.select(self._state.selection - ids)
+        self.refresh()
 
     # Setup
 
@@ -103,7 +123,13 @@ class PlanView(QGraphicsView):
     def refresh(self) -> None:
         """Rebuild the scene from the document; call after every change."""
         if self._state is not None:
-            self.plan.sync(self._state.doc, self._state.selection, editable=self.editable)
+            self.plan.sync(
+                self._state.doc,
+                self._state.selection,
+                editable=self.editable,
+                hidden=self.hidden,
+                rotate_offset=style.ROTATE_PX / self.zoom,
+            )
 
     def set_tool(self, name: str) -> None:
         self.tool.cancel()
@@ -126,21 +152,18 @@ class PlanView(QGraphicsView):
         drift = self.mapFromScene(fixed) - anchor
         self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() + drift.x())
         self.verticalScrollBar().setValue(self.verticalScrollBar().value() + drift.y())
+        self.refresh()  # the rotate handle keeps its distance on screen
 
     def zoom_to_fit(self) -> None:
-        rooms = self._state.doc.apartment.rooms if self._state else ()
+        """Show every room and furniture item of the active layout."""
         bounds = EMPTY_PLAN
-        if rooms:
-            left, top, right, bottom = room_polygon(rooms[0]).bounds
-            for room in rooms[1:]:
-                x0, y0, x1, y1 = room_polygon(room).bounds
-                left, top, right, bottom = (
-                    min(left, x0),
-                    min(top, y0),
-                    max(right, x1),
-                    max(bottom, y1),
-                )
-            bounds = QRectF(left, top, right - left, bottom - top)
+        if self._state is not None:
+            doc = self._state.doc
+            shapes = [room_polygon(r) for r in doc.apartment.rooms]
+            shapes += [placed_polygon(f) for f in doc.active_layout.furniture]
+            if shapes:
+                left, top, right, bottom = unary_union(shapes).bounds
+                bounds = QRectF(left, top, right - left, bottom - top)
         margin = max(bounds.width(), bounds.height()) * 0.08
         self.fitInView(
             bounds.adjusted(-margin, -margin, margin, margin), Qt.AspectRatioMode.KeepAspectRatio
@@ -217,8 +240,9 @@ class PlanView(QGraphicsView):
     def _pointer(self, event: QMouseEvent) -> Pointer:
         scene = self.mapToScene(event.position().toPoint())
         alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         snapping = self.state.doc.settings.snap_enabled and not alt
-        return Pointer((scene.x(), scene.y()), 1 / self.zoom, snapping)
+        return Pointer((scene.x(), scene.y()), 1 / self.zoom, snapping, alt=alt, shift=shift)
 
     # Grid
 

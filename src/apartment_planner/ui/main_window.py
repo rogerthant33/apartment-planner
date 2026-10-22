@@ -1,12 +1,17 @@
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
     QDockWidget,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -20,9 +25,16 @@ from apartment_planner.persistence.errors import ProjectFileError
 from apartment_planner.persistence.library import Library, create_project, project_name
 from apartment_planner.persistence.session import ProjectSession
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
-from apartment_planner.state.rooms import duplicate_room, selected_room
+from apartment_planner.state.furniture import (
+    add_layout,
+    delete_layout,
+    duplicate_layout,
+    rename_layout,
+    selected_furniture,
+)
+from apartment_planner.state.rooms import selected_room
 from apartment_planner.ui import dialogs
+from apartment_planner.ui.commands import Commands
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
 from apartment_planner.ui.open_project import OpenProject, local_now
 from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
@@ -100,12 +112,24 @@ class MainWindow(QMainWindow):
         self.save_status = QLabel()
         self.statusBar().addPermanentWidget(self.save_status)
 
+        self.commands = Commands(self.view)
         self._create_actions()
-        self.tools = ToolsPanel(self.tool_actions.actions())
+        self.tools = ToolsPanel(self.tool_actions.actions(), self.add_actions, self.layout_actions)
         self.tools.room_activated.connect(self._select_room)
+        self.tools.furniture_activated.connect(self.commands.select_with_groups)
+        self.tools.visibility_changed.connect(self.view.set_hidden)
+        self.tools.layout_chosen.connect(self.choose_layout)
         self.properties = PropertiesPanel()
-        self.properties.room_page.duplicate.clicked.connect(self.duplicate_selection)
-        self.properties.room_page.delete.clicked.connect(self.view.delete_selection)
+        pages = self.properties
+        for buttons in (pages.furniture_page.buttons, pages.selection_page.buttons):
+            buttons["Duplicate"].clicked.connect(self.commands.duplicate)
+            buttons["Delete"].clicked.connect(self.view.delete_selection)
+        pages.selection_page.buttons["Group"].clicked.connect(self.commands.group)
+        pages.selection_page.buttons["Ungroup"].clicked.connect(self.commands.ungroup)
+        pages.selection_page.buttons["Lock"].clicked.connect(self.commands.toggle_lock)
+        pages.selection_page.buttons["Unlock"].clicked.connect(self.commands.toggle_lock)
+        pages.room_page.duplicate.clicked.connect(self.commands.duplicate)
+        pages.room_page.delete.clicked.connect(self.view.delete_selection)
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
         self.tools_panel = self._add_panel("Tools", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
@@ -241,21 +265,6 @@ class MainWindow(QMainWindow):
         if self.editor is not None and not self.view.tool.key(Qt.Key.Key_Escape):
             self.editor.select(())
 
-    def duplicate_selection(self) -> None:
-        state = self.editor
-        if state is None or not self.view.can_edit_rooms():
-            return
-        room = selected_room(state.doc, state.selection)
-        if room is None:
-            return
-        try:
-            doc, copy_id = duplicate_room(state.doc, room.id, DUPLICATE_OFFSET)
-        except EditError as error:
-            self.view.notify(str(error))
-            return
-        state.commit(doc)
-        state.select({copy_id})
-
     def set_apartment_locked(self, locked: bool) -> None:
         state = self.editor
         if state is None or state.doc.settings.apartment_locked == locked:
@@ -263,8 +272,62 @@ class MainWindow(QMainWindow):
         settings = state.doc.settings.evolve(apartment_locked=locked)
         state.update_untracked(state.doc.evolve(settings=settings))
         if locked:
-            self.set_tool("select")
+            if self.view.tool is self.view.tools["rect"]:
+                self.set_tool("select")
+            state.select(f.id for f in selected_furniture(state.doc, state.selection))
+
+    def shortcut(self, command: Callable[[], None]) -> Callable[[], None]:
+        """`command`, except while a text field has focus (it gets the keys instead)."""
+
+        def run() -> None:
+            if not isinstance(QApplication.focusWidget(), (QLineEdit, QAbstractSpinBox)):
+                command()
+
+        return run
+
+    # Layouts. Switching isn't undoable; the other layout edits are.
+
+    def choose_layout(self, layout_id: str) -> None:
+        state = self.editor
+        if state is not None and layout_id != state.doc.active_layout_id:
+            self.view.tool.cancel()
+            state.update_untracked(state.doc.evolve(active_layout_id=layout_id))
             state.select(())
+
+    def add_layout(self) -> None:
+        self.commands.create(add_layout, select=lambda _: ())
+        self._switch_to_last_layout()
+
+    def duplicate_layout(self) -> None:
+        state = self.editor
+        if state is not None:
+            layout_id = state.doc.active_layout_id
+            self.commands.create(lambda doc: duplicate_layout(doc, layout_id), select=lambda _: ())
+            self._switch_to_last_layout()
+
+    def rename_layout(self) -> None:
+        state = self.editor
+        if state is None:
+            return
+        layout = state.doc.active_layout
+        name = dialogs.ask_text(self, "Rename Layout", "Layout name:", layout.name)
+        if name is not None:
+            self.commands.apply(lambda doc: rename_layout(doc, layout.id, name))
+
+    def delete_layout(self) -> None:
+        state = self.editor
+        if state is None:
+            return
+        layout = state.doc.active_layout
+        question = f'Delete the layout "{layout.name}" and its {len(layout.furniture)} items?'
+        if dialogs.confirm(self, "Delete Layout", question, "Delete"):
+            state.select(())
+            self.commands.apply(lambda doc: delete_layout(doc, layout.id))
+
+    def _switch_to_last_layout(self) -> None:
+        state = self.editor
+        if state is not None:
+            self.choose_layout(state.doc.layouts[-1].id)
 
     def set_snapping(self, enabled: bool) -> None:
         state = self.editor
@@ -327,7 +390,7 @@ class MainWindow(QMainWindow):
         if state is None:
             return
         self.view.refresh()
-        self.tools.refresh(state.doc, state.selection)
+        self.tools.refresh(state.doc, state.selection, self.view.hidden)
         self.properties.refresh(state, self.view.editable)
         self._update_edit_actions()
 
@@ -336,12 +399,18 @@ class MainWindow(QMainWindow):
         editable = state is not None and self.view.editable
         rooms = state is not None and self.view.can_edit_rooms()
         has_room = state is not None and selected_room(state.doc, state.selection) is not None
+        furniture = selected_furniture(state.doc, state.selection) if state else []
+        locked = state is not None and state.doc.settings.apartment_locked
         self.undo_action.setEnabled(editable and state is not None and state.can_undo)
         self.redo_action.setEnabled(editable and state is not None and state.can_redo)
-        for action in (self.rect_tool_action, self.polygon_tool_action):
-            action.setEnabled(rooms)
+        self.rect_tool_action.setEnabled(rooms)
+        self.polygon_tool_action.setEnabled(editable)
+        self.polygon_tool_action.setText("Custom Shape" if locked else "Polygon Room")
         for action in (self.delete_action, self.duplicate_action):
-            action.setEnabled(rooms and has_room)
+            action.setEnabled(editable and (bool(furniture) or (rooms and has_room)))
+        for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
+            action.setEnabled(editable)
+        self.select_all_action.setEnabled(state is not None)
         self.lock_action.setEnabled(editable)
         self.snap_action.setEnabled(editable)
         for action in (self.lock_action, self.snap_action):
@@ -398,7 +467,7 @@ class MainWindow(QMainWindow):
         self.redo_action.setShortcuts(list(dict.fromkeys(redo_keys)))
         self.delete_action = action("Delete", self.delete_pressed)
         self.delete_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Backspace")])
-        self.duplicate_action = action("Duplicate", self.duplicate_selection, "Ctrl+D")
+        self.duplicate_action = action("Duplicate", self.commands.duplicate, "Ctrl+D")
         self.cancel_action = action("Cancel", self.cancel, "Escape")
         self.addAction(self.cancel_action)  # a shortcut only, not in a menu
 
@@ -406,7 +475,7 @@ class MainWindow(QMainWindow):
         for name, text, key in (
             ("select", "Select", "V"),
             ("rect", "Rectangle Room", "M"),
-            ("polygon", "Polygon Room", "P"),
+            ("polygon", "Polygon Room", "P"),  # a custom shape while the apartment is locked
         ):
             tool = action(text, lambda _=False, n=name: self.set_tool(n), key)
             tool.setCheckable(True)
@@ -430,6 +499,50 @@ class MainWindow(QMainWindow):
             "Zoom Out", lambda: self.view.zoom_by(0.8), QKeySequence.StandardKey.ZoomOut
         )
         self.zoom_fit_action = action("Zoom to Fit", self.view.zoom_to_fit, "0")
+
+        commands = self.commands
+        self.select_all_action = action(
+            "Select All Furniture", commands.select_all, QKeySequence.StandardKey.SelectAll
+        )
+        self.group_action = action("Group", commands.group, "Ctrl+G")
+        self.ungroup_action = action("Ungroup", commands.ungroup, "Ctrl+Shift+G")
+        self.lock_items_action = action("Lock or Unlock", self.shortcut(commands.toggle_lock), "L")
+        self.rotate_action = action(
+            "Rotate 90° Clockwise", self.shortcut(lambda: commands.rotate(90)), "R"
+        )
+        self.rotate_back_action = action(
+            "Rotate 90° Counter-clockwise", self.shortcut(lambda: commands.rotate(-90)), "Shift+R"
+        )
+        self.furniture_actions = [
+            self.group_action,
+            self.ungroup_action,
+            self.lock_items_action,
+            self.rotate_action,
+            self.rotate_back_action,
+        ]
+        directions = {"Left": (-1, 0), "Right": (1, 0), "Up": (0, -1), "Down": (0, 1)}
+        for key, (dx, dy) in directions.items():
+            for modifier, step in (("", 1), ("Shift+", 10)):
+                move = self.shortcut(partial(commands.nudge, dx * step, dy * step))
+                nudge = action(f"Nudge {key}", move, f"{modifier}{key}")
+                self.addAction(nudge)  # shortcuts only, not in a menu
+                self.furniture_actions.append(nudge)
+        self.add_actions = [
+            action(text, lambda _=False, t=template: commands.add(t))
+            for template, text in (("rect", "Table"), ("round", "Round"), ("l_shape", "L-Shape"))
+        ]
+        self.layout_actions = [
+            action("Add", self.add_layout),
+            action("Rename…", self.rename_layout),
+            action("Duplicate", self.duplicate_layout),
+            action("Delete…", self.delete_layout),
+        ]
+        for layout_action, tip in zip(
+            self.layout_actions,
+            ("Add an empty layout", "Rename this layout", "Copy this layout", "Delete this layout"),
+            strict=True,
+        ):
+            layout_action.setToolTip(tip)
 
         self.new_action = action("New…", self.new_project, QKeySequence.StandardKey.New)
         self.open_action = action("Open…", self.browse, QKeySequence.StandardKey.Open)
@@ -461,7 +574,11 @@ class MainWindow(QMainWindow):
         edit_menu = self.menuBar().addMenu("&Edit")
         edit_menu.addActions([self.undo_action, self.redo_action])
         edit_menu.addSeparator()
-        edit_menu.addActions([self.duplicate_action, self.delete_action])
+        edit_menu.addActions([self.select_all_action, self.duplicate_action, self.delete_action])
+        edit_menu.addSeparator()
+        edit_menu.addActions(self.furniture_actions[:5])
+        add_menu = edit_menu.addMenu("Add Furniture")
+        add_menu.addActions(self.add_actions)
         edit_menu.addSeparator()
         edit_menu.addAction(self.lock_action)
         view_menu = self.menuBar().addMenu("&View")

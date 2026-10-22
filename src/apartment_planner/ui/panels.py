@@ -29,70 +29,120 @@ from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.model import ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
+from apartment_planner.state.furniture import selected_furniture
 from apartment_planner.state.rooms import (
     rename_room,
     selected_room,
     set_edge_length,
 )
 from apartment_planner.state.units import Unit, format_area, format_length, parse_length
+from apartment_planner.ui.furniture_panel import FurniturePage, SelectionPage
+from apartment_planner.ui.inline_errors import error_label, show_error
 
-ROOM_ID = Qt.ItemDataRole.UserRole
+ROOM_ID = Qt.ItemDataRole.UserRole  # the ID of a list entry's room or item
 UNITS: tuple[Unit, ...] = ("mm", "cm", "m")
 
 
-def error_label() -> QLabel:
-    label = QLabel()
-    label.setWordWrap(True)
-    label.setStyleSheet("color: #d32f2f;")
-    label.hide()
-    return label
-
-
-def show_error(label: QLabel, message: str | None) -> None:
-    label.setText(message or "")
-    label.setVisible(message is not None)
-
-
 class ToolsPanel(QWidget):
-    """Tool buttons and the list of rooms."""
+    """Layout switcher, tools, and the lists of rooms and furniture."""
 
     room_activated = Signal(str)
+    furniture_activated = Signal(str)
+    visibility_changed = Signal(frozenset)  # the IDs of hidden furniture
+    layout_chosen = Signal(str)
 
-    def __init__(self, tool_actions: list[QAction], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        tool_actions: list[QAction],
+        add_actions: list[QAction],
+        layout_actions: list[QAction],
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        tools = QHBoxLayout()
-        for action in tool_actions:
-            button = QToolButton()
-            button.setDefaultAction(action)
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            tools.addWidget(button)
-        tools.addStretch()
+        self.layouts = QComboBox()
+        self.layouts.activated.connect(lambda i: self.layout_chosen.emit(self.layouts.itemData(i)))
+        layout_row = QHBoxLayout()
+        layout_row.addWidget(self.layouts, 1)
+        layout_row.addLayout(_buttons(layout_actions))
         self.rooms = QListWidget()
         self.rooms.itemClicked.connect(lambda item: self.room_activated.emit(item.data(ROOM_ID)))
+        self.furniture = QListWidget()
+        self.furniture.itemClicked.connect(self._furniture_clicked)
+        self.furniture.itemChanged.connect(lambda _: self.visibility_changed.emit(self.hidden()))
         layout = QVBoxLayout(self)
-        layout.addLayout(tools)
+        layout.addWidget(QLabel("Layout"))
+        layout.addLayout(layout_row)
+        layout.addWidget(QLabel("Tools"))
+        layout.addLayout(_buttons(tool_actions))
+        layout.addWidget(QLabel("Add furniture"))
+        layout.addLayout(_buttons(add_actions))
         layout.addWidget(QLabel("Rooms"))
         layout.addWidget(self.rooms, 1)
+        layout.addWidget(QLabel("Furniture (untick to hide)"))
+        layout.addWidget(self.furniture, 2)
 
-    def refresh(self, doc: ProjectDoc, selection: frozenset[str]) -> None:
-        self.rooms.blockSignals(True)
-        entries = [(room.id, room.name) for room in doc.apartment.rooms]
-        # Rebuild only when the rooms change: this can run inside the list's own
-        # click handler, which mustn't lose the clicked item.
-        if entries != self._entries():
-            self.rooms.clear()
-            for room_id, name in entries:
-                item = QListWidgetItem(name)
-                item.setData(ROOM_ID, room_id)
-                self.rooms.addItem(item)
-        for i, (room_id, _) in enumerate(entries):
-            self.rooms.item(i).setSelected(room_id in selection)
+    def refresh(self, doc: ProjectDoc, selection: frozenset[str], hidden: frozenset[str]) -> None:
+        self.layouts.blockSignals(True)
+        self.layouts.clear()
+        for layout in doc.layouts:
+            self.layouts.addItem(layout.name, layout.id)
+        self.layouts.setCurrentIndex(
+            [layout.id for layout in doc.layouts].index(doc.active_layout_id)
+        )
+        self.layouts.blockSignals(False)
+        # Lists are rebuilt only when their entries change: this can run inside a
+        # list's own click handler, which mustn't lose the clicked item.
+        rooms = [(room.id, room.name) for room in doc.apartment.rooms]
+        _sync_list(self.rooms, rooms, selection)
         self.rooms.setEnabled(not doc.settings.apartment_locked)
-        self.rooms.blockSignals(False)
+        furniture = [(item.id, item.name) for item in doc.active_layout.furniture]
+        _sync_list(self.furniture, furniture, selection, checked=lambda i: i not in hidden)
 
-    def _entries(self) -> list[tuple[str, str]]:
-        items = (self.rooms.item(i) for i in range(self.rooms.count()))
-        return [(item.data(ROOM_ID), item.text()) for item in items]
+    def hidden(self) -> frozenset[str]:
+        items = (self.furniture.item(i) for i in range(self.furniture.count()))
+        return frozenset(
+            item.data(ROOM_ID) for item in items if item.checkState() == Qt.CheckState.Unchecked
+        )
+
+    def _furniture_clicked(self, item: QListWidgetItem) -> None:
+        if item.checkState() == Qt.CheckState.Checked:
+            self.furniture_activated.emit(item.data(ROOM_ID))
+
+
+def _buttons(actions: list[QAction]) -> QHBoxLayout:
+    row = QHBoxLayout()
+    for action in actions:
+        button = QToolButton()
+        button.setDefaultAction(action)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        row.addWidget(button)
+    row.addStretch()
+    return row
+
+
+def _sync_list(
+    widget: QListWidget,
+    entries: list[tuple[str, str]],
+    selection: frozenset[str],
+    checked: Callable[[str], bool] | None = None,
+) -> None:
+    widget.blockSignals(True)
+    current = [(widget.item(i).data(ROOM_ID), widget.item(i).text()) for i in range(widget.count())]
+    if entries != current:
+        widget.clear()
+        for entry_id, name in entries:
+            item = QListWidgetItem(name)
+            item.setData(ROOM_ID, entry_id)
+            widget.addItem(item)
+    for i, (entry_id, _) in enumerate(entries):
+        item = widget.item(i)
+        item.setSelected(entry_id in selection)
+        if checked is not None:
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(
+                Qt.CheckState.Checked if checked(entry_id) else Qt.CheckState.Unchecked
+            )
+    widget.blockSignals(False)
 
 
 class RoomPage(QWidget):
@@ -261,14 +311,23 @@ class PropertiesPanel(QStackedWidget):
         super().__init__(parent)
         self.settings_page = SettingsPage()
         self.room_page = RoomPage()
-        self.addWidget(self.settings_page)
-        self.addWidget(self.room_page)
+        self.furniture_page = FurniturePage()
+        self.selection_page = SelectionPage()
+        for page in (self.settings_page, self.room_page, self.furniture_page, self.selection_page):
+            self.addWidget(page)
 
     def refresh(self, state: EditorState, editable: bool) -> None:
+        furniture = selected_furniture(state.doc, state.selection)
         room = selected_room(state.doc, state.selection)
-        if room is None:
-            self.settings_page.show_settings(state, editable)
-            self.setCurrentWidget(self.settings_page)
-        else:
+        if len(furniture) > 1:
+            self.selection_page.show_items(furniture, editable)
+            self.setCurrentWidget(self.selection_page)
+        elif furniture:
+            self.furniture_page.show_item(state, furniture[0], editable)
+            self.setCurrentWidget(self.furniture_page)
+        elif room is not None:
             self.room_page.show_room(state, room, editable)
             self.setCurrentWidget(self.room_page)
+        else:
+            self.settings_page.show_settings(state, editable)
+            self.setCurrentWidget(self.settings_page)
