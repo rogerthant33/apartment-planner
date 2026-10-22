@@ -31,7 +31,13 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.canvas import style
 from apartment_planner.fit.findings import Severity
-from apartment_planner.geometry.openings import door_swing, edge, inward_normal, opening_span
+from apartment_planner.geometry.openings import (
+    door_swing,
+    edge,
+    inward_normal,
+    opening_span,
+    wall_pieces,
+)
 from apartment_planner.geometry.readouts import Segment
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.transform import XY
@@ -68,11 +74,14 @@ def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
 
 
 class TextLabel(QGraphicsItem):
-    """Text centred on its position, at a constant size on screen."""
+    """Text centred on its position (or `shift` screen pixels from it), at a
+    constant size on screen."""
 
     PADDING = 2.0
 
-    def __init__(self, text: str, parent: QGraphicsItem | None = None) -> None:
+    def __init__(
+        self, text: str, parent: QGraphicsItem | None = None, shift: XY = (0.0, 0.0)
+    ) -> None:
         super().__init__(parent)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.text = text
@@ -81,7 +90,7 @@ class TextLabel(QGraphicsItem):
         bounds = QFontMetricsF(self._font).boundingRect(
             QRectF(), Qt.AlignmentFlag.AlignCenter, text
         )
-        bounds.moveCenter(QPointF(0, 0))
+        bounds.moveCenter(QPointF(*shift))
         self._text_rect = bounds
         pad = self.PADDING
         self._rect = bounds.adjusted(-pad, -pad, pad, pad)
@@ -127,6 +136,7 @@ class RoomItem(QGraphicsPolygonItem):
         selected_vertex: str | None = None,
         flag: Severity | None = None,
         dimensions: bool = False,
+        openings: Sequence[Opening] = (),
     ) -> None:
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
@@ -143,17 +153,33 @@ class RoomItem(QGraphicsPolygonItem):
         self.label.setPos(anchor.x, anchor.y)
 
         self.edge_labels: list[TextLabel] = []
+        self.piece_labels: list[TextLabel] = []  # wall pieces and openings, inside
         self.handles: list[HandleItem] = []
         if selected or dimensions:
-            corners = [(v.x, v.y) for v in room.vertices]
-            for a, b in zip(corners, [*corners[1:], corners[0]], strict=True):
-                label = TextLabel(format_length(math.dist(a, b), unit), self)
-                label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
-                self.edge_labels.append(label)
+            self._add_dimensions(room, openings, unit)
         if handles:
             self.handles = [
                 HandleItem((v.x, v.y), v.id == selected_vertex, self) for v in room.vertices
             ]
+
+    def _add_dimensions(self, room: Room, openings: Sequence[Opening], unit: Unit) -> None:
+        """Each edge's length; an edge with openings also shows the lengths it's split
+        into, inside the room, with its full length moved outside."""
+        for vertex in room.vertices:
+            a, b = edge(room, vertex.id)
+            pieces = wall_pieces(room, openings, vertex.id)
+            nx, ny = inward_normal(a, b)
+            out = (-nx * style.DIMENSION_PX, -ny * style.DIMENSION_PX) if pieces else (0, 0)
+            label = TextLabel(format_length(math.dist(a, b), unit), self, shift=out)
+            label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            self.edge_labels.append(label)
+            dx, dy = (b[0] - a[0]) / math.dist(a, b), (b[1] - a[1]) / math.dist(a, b)
+            inside = (nx * style.DIMENSION_PX, ny * style.DIMENSION_PX)
+            for start, end, _ in pieces:
+                piece = TextLabel(format_length(end - start, unit), self, shift=inside)
+                middle = (start + end) / 2
+                piece.setPos(a[0] + dx * middle, a[1] + dy * middle)
+                self.piece_labels.append(piece)
 
 
 class RotateHandleItem(QGraphicsEllipseItem):

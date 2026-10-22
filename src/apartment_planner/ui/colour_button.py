@@ -1,7 +1,7 @@
 """Picking a fill colour: a swatch button that opens the colour dialog, and a
 button to go back to the default fill."""
 
-from PySide6.QtCore import QSize, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
@@ -38,6 +38,11 @@ class ColourButton(QWidget):
         pixmap.fill(QColor(colour) if colour else QColor(0, 0, 0, 0))
         self.swatch.setIcon(QIcon(pixmap))
         self.swatch.setText("" if colour else "None")
+        self.swatch.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonIconOnly
+            if colour
+            else Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self.reset.setEnabled(self.isEnabled() and colour is not None)
 
     def _choose(self) -> None:

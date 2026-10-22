@@ -5,10 +5,11 @@ right of its direction: the inward normal of (dx, dy) is (-dy, dx).
 """
 
 import math
+from collections.abc import Sequence
 
 from shapely.geometry import Polygon
 
-from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
+from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS, EPS
 from apartment_planner.geometry.snapping import nearest_on_segment
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Room
@@ -72,6 +73,39 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
             )
         )
     return Polygon([hinge, *arc])
+
+
+def wall_pieces(
+    room: Room, openings: Sequence[Opening], start_vertex_id: str
+) -> list[tuple[float, float, bool]]:
+    """An edge split by its openings, in order along it: (from, to, is_opening),
+    in cm from the edge start. Empty if no opening is on the edge.
+
+    Openings are clamped to the edge, and ones that overlap are taken as one.
+    """
+    a, b = edge(room, start_vertex_id)
+    length = math.dist(a, b)
+    spans = sorted(
+        (max(o.offset - o.width / 2, 0.0), min(o.offset + o.width / 2, length))
+        for o in openings
+        if o.room_id == room.id and o.edge_start_vertex_id == start_vertex_id
+    )
+    merged: list[tuple[float, float]] = []
+    for span_start, span_end in spans:
+        if merged and span_start < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], span_end))
+        else:
+            merged.append((span_start, span_end))
+    pieces: list[tuple[float, float, bool]] = []
+    cursor = 0.0
+    for span_start, span_end in merged:
+        if span_start > cursor + EPS:
+            pieces.append((cursor, span_start, False))
+        pieces.append((span_start, span_end, True))
+        cursor = span_end
+    if merged and cursor < length - EPS:
+        pieces.append((cursor, length, False))
+    return pieces
 
 
 def nearest_edge(rooms: list[Room], point: XY, tolerance: float) -> tuple[Room, str, float] | None:

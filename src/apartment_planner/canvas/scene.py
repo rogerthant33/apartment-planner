@@ -89,6 +89,7 @@ class PlanScene(QGraphicsScene):
                 unit,
                 selected=selected,
                 dimensions=dimensions,
+                openings=doc.apartment.openings,
                 handles=selected and handles,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),

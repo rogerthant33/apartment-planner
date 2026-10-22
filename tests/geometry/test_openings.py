@@ -10,6 +10,7 @@ from apartment_planner.geometry.openings import (
     nearest_edge,
     opening_at,
     opening_span,
+    wall_pieces,
 )
 from apartment_planner.model import DoorSpec, Opening
 from tests.factories import rect_room
@@ -93,3 +94,49 @@ def test_opening_at_picks_the_nearest_span_within_tolerance() -> None:
 
     assert opening_at([ROOM], [near, far], (130, 4), tolerance=5) == "near"
     assert opening_at([ROOM], [near, far], (200, 4), tolerance=5) is None
+
+
+def window(edge_index: int, offset: float, width: float = 80) -> Opening:
+    return Opening(
+        id=f"w{offset}",
+        kind="window",
+        room_id=ROOM.id,
+        edge_start_vertex_id=ROOM.vertices[edge_index].id,
+        offset=offset,
+        width=width,
+    )
+
+
+def test_wall_pieces_split_an_edge_around_its_openings_in_order() -> None:
+    top = ROOM.vertices[0].id
+    openings = [window(0, 300), door(0, 100), window(1, 150)]  # the last is on another edge
+
+    assert wall_pieces(ROOM, openings, top) == [
+        (0, 60, False),
+        (60, 140, True),
+        (140, 260, False),
+        (260, 340, True),
+        (340, 400, False),
+    ]
+    assert wall_pieces(ROOM, openings, ROOM.vertices[2].id) == []  # no opening there
+
+
+@pytest.mark.parametrize(
+    ("openings", "expected"),
+    [
+        # Flush with the corner: no zero-length wall piece before it.
+        ([window(0, 40)], [(0, 80, True), (80, 400, False)]),
+        # Touching openings stay two; overlapping ones become one.
+        (
+            [window(0, 140), window(0, 220)],
+            [(0, 100, False), (100, 180, True), (180, 260, True), (260, 400, False)],
+        ),
+        ([window(0, 140), window(0, 200)], [(0, 100, False), (100, 240, True), (240, 400, False)]),
+        # As wide as the wall.
+        ([window(0, 200, 400)], [(0, 400, True)]),
+    ],
+)
+def test_wall_pieces_at_the_edges_of_openings(
+    openings: list[Opening], expected: list[tuple[float, float, bool]]
+) -> None:
+    assert wall_pieces(ROOM, openings, ROOM.vertices[0].id) == expected

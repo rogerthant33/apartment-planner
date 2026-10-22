@@ -141,6 +141,10 @@ rejected inline. Overlapping rooms are allowed but produce a warning.
   `out` = away from it), shown as a quarter-circle swing arc. The swing area
   is part of fit checking.
 - **Windows:** drawn as a thin double line across the edge.
+- Where edge lengths are shown (the selected room, exports), an edge with
+  openings also shows the lengths it's split into (wall, opening, wall, …)
+  just inside the room, with its full length moved just outside.
+  Overlapping openings count as one.
 - Plain openings (no door) are supported for archways.
 - The Door, Window and Opening tools (D, W, O) place one where you click,
   on the nearest wall within 25 px, at a grid step along it, with a default
