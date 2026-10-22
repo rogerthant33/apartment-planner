@@ -25,6 +25,7 @@ from apartment_planner.geometry.hits import (
     shape_corners,
     vertex_at,
 )
+from apartment_planner.geometry.openings import nearest_edge, opening_at, opening_span
 from apartment_planner.geometry.shapes import shape_outline
 from apartment_planner.geometry.snapping import (
     placed_edges,
@@ -33,20 +34,32 @@ from apartment_planner.geometry.snapping import (
     snap_move,
 )
 from apartment_planner.geometry.transform import XY, local_to_world_all, world_to_local
-from apartment_planner.model import FurnitureItem, Point, PolygonShape, ProjectDoc
+from apartment_planner.model import (
+    FurnitureItem,
+    Obstacle,
+    Placed,
+    Point,
+    PolygonShape,
+    ProjectDoc,
+)
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
     active_furniture,
     add_polygon_furniture,
-    furniture_item,
-    move_furniture,
     move_shape_point,
-    rotate_furniture,
-    selected_furniture,
     shape_problem,
-    update_furniture,
     with_groups,
+)
+from apartment_planner.state.openings import OpeningKind, add_opening, move_opening
+from apartment_planner.state.openings import opening as opening_of
+from apartment_planner.state.placed import (
+    is_obstacle,
+    move_placed,
+    placed_item,
+    rotate_placed,
+    selected_placed,
+    update_placed,
 )
 from apartment_planner.state.rooms import (
     add_room,
@@ -85,7 +98,7 @@ class Host(Protocol):
     def notify(self, message: str) -> None: ...
 
 
-def footprint(item: FurnitureItem) -> list[XY]:
+def footprint(item: Placed) -> list[XY]:
     return local_to_world_all(shape_outline(item.shape), (item.x, item.y), item.rotation)
 
 
@@ -158,6 +171,9 @@ class Tool:
         hidden = self.host.hidden
         return [item for item in active_furniture(self.doc) if item.id not in hidden]
 
+    def visible_obstacles(self) -> list[Obstacle]:
+        return [o for o in self.doc.apartment.obstacles if o.id not in self.host.hidden]
+
 
 @dataclass
 class _Drag:
@@ -182,8 +198,8 @@ class SelectTool(Tool):
     def press(self, pointer: Pointer) -> None:
         state, doc, pos = self.host.state, self.doc, pointer.pos
         tolerance = style.HANDLE_PX * pointer.cm_per_px
-        chosen = selected_furniture(doc, state.selection)
-        if self.host.editable and len(chosen) == 1 and not chosen[0].locked:
+        chosen = selected_placed(doc, state.selection)
+        if self.host.editable and len(chosen) == 1 and self._reshapeable(chosen[0]):
             item = chosen[0]
             handles = handle_positions(item, style.ROTATE_PX * pointer.cm_per_px)
             handle = nearest_within(handles, pos, tolerance)
@@ -191,9 +207,18 @@ class SelectTool(Tool):
                 kind = "rotate" if handle is Handle.ROTATE else "resize"
                 self._drag = _Drag(kind, pos, ids=frozenset({item.id}), handle=handle)
                 return
-            corner = nearest_within(shape_corners(item), pos, tolerance)
+            corners = shape_corners(item) if isinstance(item, FurnitureItem) else {}
+            corner = nearest_within(corners, pos, tolerance)
             if corner is not None:
                 self._drag = _Drag("corner", pos, ids=frozenset({item.id}), corner=corner)
+                return
+        if self.can_edit_rooms():
+            opening_id = opening_at(
+                list(doc.apartment.rooms), list(doc.apartment.openings), pos, tolerance
+            )
+            if opening_id is not None:
+                state.select({opening_id})
+                self._drag = _Drag("opening", pos, ids=frozenset({opening_id}))
                 return
         current = selected_room(doc, state.selection)
         if current is not None and self.can_edit_rooms():
@@ -203,8 +228,10 @@ class SelectTool(Tool):
                 self._drag = _Drag("room_vertex", pos, room_id=current.id, vertex_id=vertex_id)
                 return
         hit = placed_at(self.visible_furniture(), pos)
+        if hit is None and self.can_edit_rooms():
+            hit = placed_at(self.visible_obstacles(), pos)
         if hit is not None:
-            self._press_furniture(hit, pointer)
+            self._press_placed(hit, pointer)
             return
         room_id = None if doc.settings.apartment_locked else room_at(doc.apartment.rooms, pos)
         if room_id is not None:
@@ -214,18 +241,32 @@ class SelectTool(Tool):
             state.select(())
         self._drag = _Drag("band", pos)
 
-    def _press_furniture(self, hit: str, pointer: Pointer) -> None:
+    def _reshapeable(self, item: Placed) -> bool:
+        if isinstance(item, FurnitureItem):
+            return not item.locked
+        return self.can_edit_rooms()
+
+    def _press_placed(self, hit: str, pointer: Pointer) -> None:
+        """Select furniture (with its group) or an obstacle, and start moving it.
+
+        A selection holds one kind: Shift+click on the other kind starts afresh.
+        """
         state, doc = self.host.state, self.doc
         group = with_groups(doc, {hit})
-        furniture = frozenset(f.id for f in selected_furniture(doc, state.selection))
+        obstacle = is_obstacle(doc, hit)
+        selected = frozenset(
+            i.id
+            for i in selected_placed(doc, state.selection)
+            if is_obstacle(doc, i.id) == obstacle
+        )
         if pointer.shift:
-            state.select(furniture - group if hit in furniture else furniture | group)
+            state.select(selected - group if hit in selected else selected | group)
             return
-        if hit not in furniture:
-            furniture = group
-            state.select(furniture)
+        if hit not in selected:
+            selected = group
+            state.select(selected)
         if self.host.editable:
-            self._drag = _Drag("move", pointer.pos, ids=with_groups(doc, furniture))
+            self._drag = _Drag("move", pointer.pos, ids=with_groups(doc, selected))
 
     def move(self, pointer: Pointer) -> None:
         drag = self._drag
@@ -244,14 +285,37 @@ class SelectTool(Tool):
             )
         elif drag.kind == "move":
             self._move_preview(drag, pointer)
+        elif drag.kind == "opening":
+            self._opening_preview(drag, pointer)
         else:
             self._reshape_preview(drag, pointer)
 
+    def _opening_preview(self, drag: _Drag, pointer: Pointer) -> None:
+        (opening_id,) = drag.ids
+        found = nearest_edge(
+            list(self.doc.apartment.rooms), pointer.pos, style.WALL_PX * pointer.cm_per_px
+        )
+        if found is None:
+            drag.result = None
+            self.host.plan.preview.clear()
+            return
+        target, vertex_id, along = found
+        if pointer.snapping:
+            along = round(along / self.doc.settings.grid_size) * self.doc.settings.grid_size
+        drag.result = lambda: move_opening(self.doc, opening_id, target.id, vertex_id, along)
+        moved = opening_of(drag.result(), opening_id)
+        span = opening_span(room(self.doc, moved.room_id), moved)
+        self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
+
     def _move_preview(self, drag: _Drag, pointer: Pointer) -> None:
-        items = selected_furniture(self.doc, drag.ids)
+        items = selected_placed(self.doc, drag.ids)
         delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
         if pointer.snapping:
-            others = [f for f in self.visible_furniture() if f.id not in drag.ids]
+            others = [
+                f
+                for f in (*self.visible_furniture(), *self.visible_obstacles())
+                if f.id not in drag.ids
+            ]
             rooms = room_targets(self.doc.apartment.rooms).edges
             corners = [corner for item in items for corner in footprint(item)]
             delta = snap_move(
@@ -264,23 +328,24 @@ class SelectTool(Tool):
             )
         dx, dy = delta
         outlines = [[(x + dx, y + dy) for x, y in footprint(item)] for item in items]
-        valid = not any(item.locked for item in items)
-        drag.result = lambda: move_furniture(self.doc, drag.ids, delta)
+        valid = not any(getattr(item, "locked", False) for item in items)
+        drag.result = lambda: move_placed(self.doc, drag.ids, delta)
         self.host.plan.preview.show_outlines(outlines, closed=True, valid=valid)
 
     def _reshape_preview(self, drag: _Drag, pointer: Pointer) -> None:
         (item_id,) = drag.ids
-        item = furniture_item(self.doc, item_id)
+        item = placed_item(self.doc, item_id)
+        changed: Placed
         if drag.kind == "rotate":
             rotation = rotation_towards((item.x, item.y), pointer.pos, snap=not pointer.alt)
             changed = item.evolve(rotation=rotation)
-            drag.result = lambda: rotate_furniture(self.doc, drag.ids, rotation - item.rotation)
+            drag.result = lambda: rotate_placed(self.doc, drag.ids, rotation - item.rotation)
             valid = True
         elif drag.kind == "resize":
             assert drag.handle is not None
             shape, (x, y) = resized(item, drag.handle, self.snapped(pointer))
             changed = item.evolve(shape=shape, x=x, y=y)
-            drag.result = lambda: update_furniture(self.doc, item_id, shape=shape, x=x, y=y)
+            drag.result = lambda: update_placed(self.doc, item_id, shape=shape, x=x, y=y)
             valid = True
         else:
             target = self.snapped(pointer)
@@ -346,8 +411,51 @@ class SelectTool(Tool):
         super().cancel()
 
 
-def _local(item: FurnitureItem, world: XY) -> XY:
+def _local(item: Placed, world: XY) -> XY:
     return world_to_local(world, (item.x, item.y), item.rotation)
+
+
+class OpeningTool(Tool):
+    """Click near a wall to put a door, window or plain opening there."""
+
+    cursor = Qt.CursorShape.CrossCursor
+
+    def __init__(self, host: Host, kind: OpeningKind) -> None:
+        super().__init__(host)
+        self.kind: OpeningKind = kind
+
+    def _placement(self, pointer: Pointer) -> Callable[[], tuple[ProjectDoc, str]] | None:
+        if not self.can_edit_rooms():
+            return None
+        found = nearest_edge(
+            list(self.doc.apartment.rooms), pointer.pos, style.WALL_PX * pointer.cm_per_px
+        )
+        if found is None:
+            return None
+        target, vertex_id, along = found
+        if pointer.snapping:
+            along = round(along / self.doc.settings.grid_size) * self.doc.settings.grid_size
+        return lambda: add_opening(self.doc, self.kind, target.id, vertex_id, along)
+
+    def move(self, pointer: Pointer) -> None:
+        place = self._placement(pointer)
+        if place is None:
+            self.host.plan.preview.clear()
+            return
+        doc, opening_id = place()
+        added = opening_of(doc, opening_id)
+        span = opening_span(room(doc, added.room_id), added)
+        self.host.plan.preview.show_outline(list(span), closed=False, valid=True)
+
+    def press(self, pointer: Pointer) -> None:
+        place = self._placement(pointer)
+        if place is None:
+            if self.can_edit_rooms():
+                self.host.notify(f"Click on a wall to place the {self.kind}.")
+            return
+        doc, opening_id = place()
+        self.cancel()
+        self.commit(doc, select=frozenset({opening_id}))
 
 
 class RectRoomTool(Tool):

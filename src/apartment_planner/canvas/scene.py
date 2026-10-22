@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from apartment_planner.canvas.items import (
     HandleItem,
+    OpeningItem,
     PlacedItem,
     PreviewItem,
     RoomItem,
@@ -12,8 +13,8 @@ from apartment_planner.canvas.items import (
 )
 from apartment_planner.geometry.handles import Handle, handle_positions
 from apartment_planner.geometry.hits import shape_corners
-from apartment_planner.model import FurnitureItem, ProjectDoc
-from apartment_planner.state.furniture import selected_furniture
+from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
+from apartment_planner.state.placed import selected_placed
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
 SCENE_RECT = QRectF(-20_000, -20_000, 40_000, 40_000)
@@ -27,16 +28,17 @@ class PlanScene(QGraphicsScene):
         self.setSceneRect(SCENE_RECT)
         self.grid_size = 10.0
         self.rooms: list[RoomItem] = []
-        self.furniture: list[PlacedItem] = []
+        self.furniture: list[PlacedItem] = []  # and obstacles
+        self.openings: list[OpeningItem] = []
         self._extras: list[QGraphicsItem] = []  # handles drawn over the selection
         self.preview = PreviewItem()
         self.addItem(self.preview)
         self.preview.clear()
 
     def clear_plan(self) -> None:
-        for item in [*self.rooms, *self.furniture, *self._extras]:
+        for item in [*self.rooms, *self.furniture, *self.openings, *self._extras]:
             self.removeItem(item)
-        self.rooms, self.furniture, self._extras = [], [], []
+        self.rooms, self.furniture, self.openings, self._extras = [], [], [], []
         self.preview.clear()
 
     def sync(
@@ -64,20 +66,26 @@ class PlanScene(QGraphicsScene):
             )
             self.addItem(item)
             self.rooms.append(item)
+        rooms = {room.id: room for room in doc.apartment.rooms}
+        for opening in doc.apartment.openings:
+            drawn = OpeningItem(rooms[opening.room_id], opening, selected=opening.id in selection)
+            self.addItem(drawn)
+            self.openings.append(drawn)
         hidden_ids = set(hidden)
-        for furniture in doc.active_layout.furniture:
-            if furniture.id not in hidden_ids:
-                placed = PlacedItem(furniture, unit, selected=furniture.id in selection)
-                self.addItem(placed)
-                self.furniture.append(placed)
-        chosen = selected_furniture(doc, selection)
-        if editable and len(chosen) == 1 and not chosen[0].locked:
+        for placed in (*doc.apartment.obstacles, *doc.active_layout.furniture):
+            if placed.id not in hidden_ids:
+                drawn_item = PlacedItem(placed, unit, selected=placed.id in selection)
+                self.addItem(drawn_item)
+                self.furniture.append(drawn_item)
+        chosen = selected_placed(doc, selection)
+        # Obstacles get handles only while the apartment is unlocked; locked furniture none.
+        if editable and len(chosen) == 1 and _reshapeable(chosen[0], rooms_editable=handles):
             self._add_handles(chosen[0], rotate_offset)
         if doc.settings.grid_size != self.grid_size:
             self.grid_size = doc.settings.grid_size
             self.update()
 
-    def _add_handles(self, item: FurnitureItem, rotate_offset: float) -> None:
+    def _add_handles(self, item: Placed, rotate_offset: float) -> None:
         for handle, point in handle_positions(item, rotate_offset).items():
             marker: QGraphicsItem = (
                 RotateHandleItem(point) if handle is Handle.ROTATE else HandleItem(point, False)
@@ -88,3 +96,9 @@ class PlanScene(QGraphicsScene):
             corner = HandleItem(point, False)
             self.addItem(corner)
             self._extras.append(corner)
+
+
+def _reshapeable(item: Placed, *, rooms_editable: bool) -> bool:
+    if isinstance(item, FurnitureItem):
+        return not item.locked
+    return rooms_editable

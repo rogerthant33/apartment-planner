@@ -8,6 +8,7 @@ from apartment_planner.geometry.openings import (
     edge,
     inward_normal,
     nearest_edge,
+    opening_at,
     opening_span,
 )
 from apartment_planner.model import DoorSpec, Opening
@@ -85,3 +86,10 @@ def test_nearest_edge_finds_the_wall_and_the_distance_along_it() -> None:
     assert (room, vertex_id) == (ROOM, ROOM.vertices[1].id)
     assert along == pytest.approx(120)
     assert nearest_edge([ROOM], (200, 150), tolerance=5) is None
+
+
+def test_opening_at_picks_the_nearest_span_within_tolerance() -> None:
+    near, far = door(0, 100).evolve(id="near"), door(0, 300).evolve(id="far")
+
+    assert opening_at([ROOM], [near, far], (130, 4), tolerance=5) == "near"
+    assert opening_at([ROOM], [near, far], (200, 4), tolerance=5) is None

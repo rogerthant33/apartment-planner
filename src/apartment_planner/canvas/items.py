@@ -19,6 +19,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
+    QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPolygonItem,
     QGraphicsRectItem,
@@ -27,11 +28,14 @@ from PySide6.QtWidgets import (
 )
 
 from apartment_planner.canvas import style
+from apartment_planner.geometry.openings import door_swing, edge, inward_normal, opening_span
 from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import (
     EllipseShape,
     FurnitureItem,
+    Obstacle,
+    Opening,
     Placed,
     PolygonShape,
     RectShape,
@@ -165,7 +169,10 @@ def shape_path(shape: Shape) -> QPainterPath:
 
 
 class PlacedItem(QGraphicsPathItem):
-    """A furniture item (or obstacle) placed at its origin and turned by its rotation."""
+    """A furniture item or obstacle placed at its origin and turned by its rotation.
+
+    Obstacles are hatched and drawn under the furniture.
+    """
 
     def __init__(self, item: Placed, unit: Unit, *, selected: bool) -> None:
         super().__init__(shape_path(item.shape))
@@ -173,10 +180,16 @@ class PlacedItem(QGraphicsPathItem):
         self.setPos(item.x, item.y)
         self.setRotation(item.rotation)
         locked = isinstance(item, FurnitureItem) and item.locked
+        obstacle = isinstance(item, Obstacle)
         outline = style.ACCENT if selected else style.FURNITURE_OUTLINE
         self.setPen(cosmetic_pen(outline, 1.5, dashed=locked))
-        self.setBrush(QBrush(QColor(item.color) if item.color else style.FURNITURE_FILL))
-        self.setZValue(1)
+        if obstacle:
+            self.setBrush(
+                QBrush(QColor(item.color or style.OBSTACLE_HATCH), Qt.BrushStyle.BDiagPattern)
+            )
+        else:
+            self.setBrush(QBrush(QColor(item.color) if item.color else style.FURNITURE_FILL))
+        self.setZValue(0.5 if obstacle else 1)
         self.label = TextLabel(item.name + (" (locked)" if locked else ""), self)
         self.edge_labels: list[TextLabel] = []
         if selected and isinstance(item.shape, PolygonShape):
@@ -185,6 +198,45 @@ class PlacedItem(QGraphicsPathItem):
                 label = TextLabel(format_length(math.dist(a, b), unit), self)
                 label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
                 self.edge_labels.append(label)
+
+
+class OpeningItem(QGraphicsPathItem):
+    """A door, window or plain opening drawn across its wall.
+
+    A gap is cut in the wall line; doors add the leaf and its swing arc,
+    windows a double line.
+    """
+
+    WINDOW_DEPTH = 8.0  # cm between a window's two lines
+
+    def __init__(self, room: Room, opening: Opening, *, selected: bool) -> None:
+        super().__init__()
+        self.opening_id = opening.id
+        a, b = opening_span(room, opening)
+        nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))
+        color = style.ACCENT if selected else style.ROOM_OUTLINE
+        self.setPen(cosmetic_pen(color, 1.5 if selected else 1.2))
+        self.setZValue(0.8)
+        path = QPainterPath()
+        jamb = self.WINDOW_DEPTH / 2
+        for end in (a, b):
+            path.moveTo(end[0] - nx * jamb, end[1] - ny * jamb)
+            path.lineTo(end[0] + nx * jamb, end[1] + ny * jamb)
+        if opening.kind == "window":
+            for side in (-jamb, jamb):
+                path.moveTo(a[0] + nx * side, a[1] + ny * side)
+                path.lineTo(b[0] + nx * side, b[1] + ny * side)
+        elif opening.kind == "door":
+            hinge, *arc = list(door_swing(room, opening).exterior.coords)[:-1]
+            path.moveTo(*hinge)
+            path.lineTo(*arc[-1])  # the leaf, drawn open
+            path.moveTo(*arc[0])
+            for point in arc[1:]:
+                path.lineTo(*point)
+        self.setPath(path)
+        gap = QGraphicsLineItem(a[0], a[1], b[0], b[1], self)
+        gap.setPen(cosmetic_pen(style.BACKGROUND, style.OUTLINE_PX + 2))
+        gap.setFlag(QGraphicsItem.GraphicsItemFlag.ItemStacksBehindParent)
 
 
 class PreviewItem(QGraphicsPathItem):

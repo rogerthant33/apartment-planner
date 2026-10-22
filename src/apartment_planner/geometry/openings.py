@@ -86,3 +86,17 @@ def nearest_edge(rooms: list[Room], point: XY, tolerance: float) -> tuple[Room, 
             if distance <= tolerance and (best is None or distance < best[0]):
                 best = (distance, room, vertex.id, math.dist(a, on_edge))
     return None if best is None else best[1:]
+
+
+def opening_at(
+    rooms: list[Room], openings: list[Opening], point: XY, tolerance: float
+) -> str | None:
+    """The ID of the opening whose span passes within `tolerance` of `point`."""
+    by_id = {room.id: room for room in rooms}
+    best: tuple[float, str] | None = None
+    for candidate in openings:
+        a, b = opening_span(by_id[candidate.room_id], candidate)
+        distance = math.dist(point, nearest_on_segment(point, a, b))
+        if distance <= tolerance and (best is None or distance < best[0]):
+            best = (distance, candidate.id)
+    return None if best is None else best[1]

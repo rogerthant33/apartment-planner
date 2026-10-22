@@ -21,6 +21,7 @@ from shapely import unary_union
 from apartment_planner.canvas import style
 from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.canvas.tools import (
+    OpeningTool,
     Pointer,
     PolygonTool,
     RectRoomTool,
@@ -28,9 +29,11 @@ from apartment_planner.canvas.tools import (
     Tool,
 )
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
+from apartment_planner.model import FurnitureItem
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
-from apartment_planner.state.furniture import delete_furniture, selected_furniture
+from apartment_planner.state.openings import delete_openings, selected_openings
+from apartment_planner.state.placed import delete_placed, selected_placed
 from apartment_planner.state.rooms import delete_selection
 
 MIN_SCALE = 0.02  # screen px per cm: 50 m across a 1000 px window
@@ -59,6 +62,9 @@ class PlanView(QGraphicsView):
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
             "polygon": PolygonTool(self),
+            "door": OpeningTool(self, "door"),
+            "window": OpeningTool(self, "window"),
+            "opening": OpeningTool(self, "opening"),
         }
         self.tool: Tool = self.tools["select"]
         self._pan_from: QPoint | None = None
@@ -87,16 +93,21 @@ class PlanView(QGraphicsView):
         )
 
     def delete_selection(self) -> None:
-        """Delete the selected furniture, or else the selected vertex or room."""
+        """Delete the selected furniture, obstacles or openings, or else the selected
+        vertex or room."""
         state = self._state
         if state is None or not self.editable:
             return
-        furniture = selected_furniture(state.doc, state.selection)
-        if not furniture and not self.can_edit_rooms():
+        placed = selected_placed(state.doc, state.selection)
+        openings = selected_openings(state.doc, state.selection)
+        furniture_only = all(isinstance(p, FurnitureItem) for p in placed) and not openings
+        if not (placed and furniture_only) and not self.can_edit_rooms():
             return
         try:
-            if furniture:
-                doc = delete_furniture(state.doc, [f.id for f in furniture])
+            if placed:
+                doc = delete_placed(state.doc, [p.id for p in placed])
+            elif openings:
+                doc = delete_openings(state.doc, [o.id for o in openings])
             else:
                 doc = delete_selection(state.doc, state.selection)
         except EditError as error:
