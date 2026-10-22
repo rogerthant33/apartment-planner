@@ -560,7 +560,10 @@ class MainWindow(QMainWindow):
         self.import_background_action.setEnabled(editable)
         apartment = rooms and (has_room or obstacles)
         self.duplicate_action.setEnabled(editable and (bool(furniture) or apartment))
-        self.delete_action.setEnabled(editable and (bool(furniture) or apartment or openings))
+        # Rooms and obstacles stay deletable while locked, so Delete says to unlock.
+        any_rooms = state is not None and bool(selected_rooms(state.doc, state.selection))
+        deletable = bool(furniture) or obstacles or openings or any_rooms
+        self.delete_action.setEnabled(editable and deletable)
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
             action.setEnabled(editable)
         self.select_all_action.setEnabled(state is not None)

@@ -74,6 +74,17 @@ def test_a_cut_pastes_back_under_its_own_names_and_in_any_layout() -> None:
     assert (lamp.id in pasted, lamp.name, lamp.x, lamp.y) == (True, "Lamp", 350, 250)
 
 
+def test_furniture_pasted_into_another_project_is_in_no_room() -> None:
+    doc, ids = flat()
+    clip = copy_selection(doc, {ids["lamp"]})
+    assert clip is not None
+
+    other, _ = paste(new_project("Studio", now=NOW), clip, (0, 0))
+
+    (lamp,) = other.active_layout.furniture
+    assert lamp.room_id is None
+
+
 def test_pasted_obstacles_keep_their_shape_turn_and_colour() -> None:
     doc, ids = flat()
     clip = copy_selection(doc, {ids["column"]})

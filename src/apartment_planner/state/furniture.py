@@ -145,11 +145,18 @@ def duplicate_furniture(
     doc: ProjectDoc, ids: Iterable[str], offset: XY
 ) -> tuple[ProjectDoc, frozenset[str]]:
     """Copies moved by `offset`; copies of a group's members form a new group."""
-    items = selected_furniture(doc, ids)
+    return copy_furniture(doc, selected_furniture(doc, ids), doc.active_layout.groups, offset)
+
+
+def copy_furniture(
+    doc: ProjectDoc, items: Sequence[FurnitureItem], groups: Iterable[Group], offset: XY
+) -> tuple[ProjectDoc, frozenset[str]]:
+    """Copies of `items`, from this or another document, added to the active layout
+    and moved by `offset`. Copies of the members of one of `groups` form a new group."""
     group_ids = {item.group_id: new_id() for item in items if item.group_id is not None}
     layout = doc.active_layout
-    groups = tuple(
-        Group(id=group_ids[g.id], name=f"{g.name} copy") for g in layout.groups if g.id in group_ids
+    new_groups = tuple(
+        Group(id=group_ids[g.id], name=f"{g.name} copy") for g in groups if g.id in group_ids
     )
     dx, dy = offset
     names: list[str] = []
@@ -169,7 +176,9 @@ def duplicate_furniture(
         )
         for item, name in zip(items, names, strict=True)  # pragma: no mutate (one name each)
     )
-    layout = layout.evolve(furniture=(*layout.furniture, *copies), groups=(*layout.groups, *groups))
+    layout = layout.evolve(
+        furniture=(*layout.furniture, *copies), groups=(*layout.groups, *new_groups)
+    )
     return _with_layout(doc, layout), frozenset(c.id for c in copies)
 
 

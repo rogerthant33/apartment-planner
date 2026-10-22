@@ -122,7 +122,8 @@ after confirmation), Show in Folder, and changing the projects folder.
   Shift+ or Ctrl+click adds rooms to the selection; dragging any selected room
   moves them all, with their openings. A moved corner snaps onto another
   room's corner, or else the rooms move flush against the nearest wall within
-  10 px, or else the first corner lands on the grid. Alt suspends snapping. A
+  10 px (and slide on into a corner it makes, as furniture does), or else the
+  first corner lands on the grid. Alt suspends snapping. A
   press that moves less than 4 px is a click and moves nothing. Furniture
   stays where it is (only its room assignment is updated). Corner handles show
   only while a single room is selected. A read-only project still selects

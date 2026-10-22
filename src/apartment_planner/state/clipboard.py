@@ -16,10 +16,9 @@ from apartment_planner.model import (
     Opening,
     ProjectDoc,
     Room,
-    new_id,
 )
 from apartment_planner.state import furniture
-from apartment_planner.state.placed import add_obstacle, selected_obstacles, update_placed
+from apartment_planner.state.placed import copy_obstacles, selected_obstacles
 from apartment_planner.state.rooms import copied_room, selected_rooms
 
 
@@ -33,6 +32,12 @@ class Clip:
     obstacles: tuple[Obstacle, ...] = ()
     rooms: tuple[Room, ...] = ()
     openings: tuple[Opening, ...] = ()
+
+    @property
+    def ids(self) -> frozenset[str]:
+        """The copied furniture, obstacles or rooms."""
+        placed = (*self.furniture, *self.obstacles)
+        return frozenset(p.id for p in placed) | {r.id for r in self.rooms}
 
     @property
     def is_apartment(self) -> bool:
@@ -64,48 +69,14 @@ def paste(doc: ProjectDoc, clip: Clip, offset: XY) -> tuple[ProjectDoc, frozense
     """Copies of the clip's contents, moved by `offset`, with new IDs: furniture into
     the active layout (unlocked, numbered names, its groups as new groups), obstacles
     and rooms into the apartment. Returns the document and the copies' IDs."""
-    dx, dy = offset
-    pasted: list[str] = []
     if clip.furniture:
-        group_ids = {g.id: new_id() for g in clip.groups}
-        names: list[str] = []
-        copies = []
-        for item in clip.furniture:
-            names.append(furniture.name_for(doc, item.name, names))
-            group_id = None if item.group_id is None else group_ids.get(item.group_id)
-            copies.append(
-                item.evolve(
-                    id=new_id(),
-                    name=names[-1],
-                    x=item.x + dx,
-                    y=item.y + dy,
-                    group_id=group_id,
-                    locked=False,
-                )
-            )
-        groups = tuple(g.evolve(id=group_ids[g.id]) for g in clip.groups)
-        layout = doc.active_layout
-        layout = layout.evolve(
-            furniture=(*layout.furniture, *copies), groups=(*layout.groups, *groups)
-        )
-        layouts = tuple(layout if lay.id == layout.id else lay for lay in doc.layouts)
-        doc = furniture.reassign_rooms(doc.evolve(layouts=layouts))
-        pasted += [c.id for c in copies]
-    for obstacle in clip.obstacles:
-        doc, copy_id = add_obstacle(
-            doc, obstacle.shape, (obstacle.x + dx, obstacle.y + dy), obstacle.name
-        )
-        doc = update_placed(
-            doc, copy_id, rotation=obstacle.rotation, color=obstacle.color, notes=obstacle.notes
-        )
-        pasted.append(copy_id)
-    rooms, openings = list(doc.apartment.rooms), list(doc.apartment.openings)
-    for source in clip.rooms:
-        copy, copied = copied_room(source, clip.openings, offset)
-        rooms.append(copy)
-        openings.extend(copied)
-        pasted.append(copy.id)
-    if clip.rooms:
-        apartment = doc.apartment.evolve(rooms=tuple(rooms), openings=tuple(openings))
-        doc = furniture.reassign_rooms(doc.evolve(apartment=apartment))
-    return doc, frozenset(pasted)
+        return furniture.copy_furniture(doc, clip.furniture, clip.groups, offset)
+    if clip.obstacles:
+        return copy_obstacles(doc, clip.obstacles, offset)
+    copies = [copied_room(source, clip.openings, offset) for source in clip.rooms]
+    apartment = doc.apartment.evolve(
+        rooms=(*doc.apartment.rooms, *(room for room, _ in copies)),
+        openings=(*doc.apartment.openings, *(o for _, openings in copies for o in openings)),
+    )
+    doc = furniture.reassign_rooms(doc.evolve(apartment=apartment))
+    return doc, frozenset(room.id for room, _ in copies)

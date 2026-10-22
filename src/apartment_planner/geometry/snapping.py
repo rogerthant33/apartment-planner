@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
+from apartment_planner.geometry.constants import EPS
 from apartment_planner.geometry.shapes import shape_outline
 from apartment_planner.geometry.transform import XY, local_to_world_all
 from apartment_planner.model import Placed, Room
@@ -117,18 +118,14 @@ def snap_move(
     there is one.
     """
     dx, dy = delta
-    best: tuple[float, XY, tuple[XY, XY]] | None = None
-    for x, y in corners:
-        moved = (x + dx, y + dy)
-        for a, b in edges:
-            target = nearest_on_segment(moved, a, b)
-            distance = math.dist(moved, target)
-            if distance <= tolerance and (best is None or distance < best[0]):
-                best = (distance, (target[0] - moved[0], target[1] - moved[1]), (a, b))
-    if best is not None:
-        _, (sx, sy), (a, b) = best
+    found = _closest(corners, delta, lambda moved: _on_edges(moved, edges), tolerance)
+    if found is not None:
+        (sx, sy), (a, b) = found
         flush = (dx + sx, dy + sy)
-        along = _unit(a, b)
+        length = math.dist(a, b)
+        if length == 0:  # a degenerate edge is a point: no direction to slide in
+            return flush
+        along = ((b[0] - a[0]) / length, (b[1] - a[1]) / length)
         slide = _slide_onto(corners, flush, along, edges, tolerance)
         return (flush[0] + along[0] * slide, flush[1] + along[1] * slide)
     if grid is not None:
@@ -148,38 +145,39 @@ def snap_room_move(
     """Adjust a move by `delta` of rooms with these `corners`.
 
     A moved corner within `tolerance` of another room's corner lands on it;
-    otherwise the rooms move flush against the nearest edge in reach, or else
-    the first corner lands on the grid.
+    otherwise the rooms move as `snap_move` moves furniture: flush against the
+    nearest edge in reach (and on into a corner it makes), or else the first
+    corner lands on the grid.
     """
     dx, dy = delta
-    shift = _closest_shift(corners, delta, lambda _: targets.vertices, tolerance)
-    if shift is not None:
-        return (dx + shift[0], dy + shift[1])
+    found = _closest(corners, delta, lambda _: ((v, v) for v in targets.vertices), tolerance)
+    if found is not None:
+        return (dx + found[0][0], dy + found[0][1])
     return snap_move(corners, corners[0], delta, targets.edges, grid=grid, tolerance=tolerance)
 
 
-def _closest_shift(
+def _closest[T](
     corners: Sequence[XY],
     delta: XY,
-    targets_for: Callable[[XY], Iterable[XY]],
+    targets_for: Callable[[XY], Iterable[tuple[XY, T]]],
     tolerance: float,
-) -> XY | None:
+) -> tuple[XY, T] | None:
     """The shortest further shift that puts a moved corner on one of its targets,
-    within `tolerance`; the first found wins a tie. None if none is in reach."""
+    within `tolerance`, and what that target came from; the first found wins a tie.
+    None if none is in reach."""
     dx, dy = delta
-    best: tuple[float, XY] | None = None
+    best: tuple[float, XY, T] | None = None
     for x, y in corners:
         moved = (x + dx, y + dy)
-        for target in targets_for(moved):
+        for target, source in targets_for(moved):
             distance = math.dist(moved, target)
             if distance <= tolerance and (best is None or distance < best[0]):
-                best = (distance, (target[0] - moved[0], target[1] - moved[1]))
-    return None if best is None else best[1]
+                best = (distance, (target[0] - moved[0], target[1] - moved[1]), source)
+    return None if best is None else (best[1], best[2])
 
 
-def _unit(a: XY, b: XY) -> XY:
-    length = math.dist(a, b)
-    return ((b[0] - a[0]) / length, (b[1] - a[1]) / length)
+def _on_edges(point: XY, edges: Iterable[tuple[XY, XY]]) -> Iterable[tuple[XY, tuple[XY, XY]]]:
+    return ((nearest_on_segment(point, a, b), (a, b)) for a, b in edges)
 
 
 def _slide_onto(
@@ -194,9 +192,11 @@ def _slide_onto(
         px, py = x + delta[0], y + delta[1]
         for (ax, ay), (bx, by) in edges:
             ex, ey = bx - ax, by - ay
-            denominator = ux * ey - uy * ex
-            if math.isclose(denominator, 0.0, abs_tol=1e-12):
-                continue  # parallel to the slide: the edge it's flush against, say
+            denominator = ux * ey - uy * ex  # the edge's length times the sine between them
+            if abs(denominator) * tolerance <= EPS * math.hypot(ex, ey):
+                # (Nearly) parallel to the slide, such as the edge it's flush against:
+                # within reach it strays less than EPS from it, so it's no corner.
+                continue
             ox, oy = ax - px, ay - py
             t = (ox * ey - oy * ex) / denominator
             s = (ox * uy - oy * ux) / denominator

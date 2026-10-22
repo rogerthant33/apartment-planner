@@ -55,6 +55,7 @@ from apartment_planner.state.furniture import (
     active_furniture,
     add_polygon_furniture,
     move_shape_point,
+    selected_furniture,
     shape_problem,
     with_groups,
 )
@@ -263,8 +264,8 @@ class SelectTool(Tool):
             return
         if not pointer.adds:
             state.select(())
-        # While the apartment is locked, a click in a room selects it (to see its
-        # measurements), and a drag selects furniture with a band as elsewhere.
+        # While the apartment is locked, a click in a room selects it on release (to
+        # see its measurements), and a drag selects furniture with a band as elsewhere.
         self._drag = _Drag("band", pos, room_id=room_id or "")
 
     def _press_room(self, room_id: str, pointer: Pointer) -> None:
@@ -313,6 +314,9 @@ class SelectTool(Tool):
             return
         preview = self.host.plan.preview
         if drag.kind == "band":
+            delta = (pointer.pos[0] - drag.start[0], pointer.pos[1] - drag.start[1])
+            if drag.end is None and math.hypot(*delta) < style.DRAG_PX * pointer.cm_per_px:
+                return  # still a click, which in a locked room selects the room
             drag.end = pointer.pos
             preview.show_outline(rect_outline(drag.start, pointer.pos), closed=True, valid=True)
         elif drag.kind == "room_vertex":
@@ -431,13 +435,13 @@ class SelectTool(Tool):
         if drag is None:
             return
         if drag.kind == "band":
-            keep = self.host.state.selection if pointer.adds else frozenset()
+            state = self.host.state
             if drag.end is not None:
                 touched = placed_in_rect(self.visible_furniture(), drag.start, drag.end)
-                self.host.state.select(keep | with_groups(self.doc, touched))
+                kept = selected_furniture(self.doc, state.selection) if pointer.adds else []
+                state.select({f.id for f in kept} | with_groups(self.doc, touched))
             elif drag.room_id:
-                room_id = drag.room_id
-                self.host.state.select(keep - {room_id} if room_id in keep else keep | {room_id})
+                self._press_room(drag.room_id, pointer)  # selects only: no moving while locked
             return
         if drag.result is None:  # a click, not a drag
             return

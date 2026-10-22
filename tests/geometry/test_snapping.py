@@ -168,3 +168,11 @@ def test_a_corner_slides_along_a_sloping_wall_into_the_corner_it_makes() -> None
 
     corner = (box[0][0] + dx, box[0][1] + dy)
     assert corner == pytest.approx((0, 0), abs=1e-9)
+
+
+def test_a_degenerate_edge_is_snapped_to_as_a_point_with_no_slide() -> None:
+    point = ((10.0, 100.0), (10.0, 100.0))  # a zero-length edge, as a doubled corner gives
+
+    shift = snap_move(SOFA_CORNERS, SOFA_ORIGIN, (0, 0), [point], grid=None, tolerance=5)
+
+    assert shift == pytest.approx((-3, -2))  # the sofa's corner (13, 102) onto the point

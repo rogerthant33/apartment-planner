@@ -10,6 +10,7 @@ from apartment_planner.model import FurnitureItem, RectShape, new_project
 from apartment_planner.persistence.archive import ProjectFile
 from apartment_planner.persistence.files import create_project_file
 from apartment_planner.state.editor import EditorState
+from apartment_planner.state.furniture import set_locked
 from apartment_planner.state.rooms import add_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.main_window import MainWindow
@@ -228,3 +229,19 @@ def test_copy_cut_and_paste_with_the_keyboard(window: MainWindow) -> None:
     QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)  # back where it was cut from
     pasted = furniture(window)[-1]
     assert (pasted.name, pasted.x, pasted.y) == ("Table 3", second.x, second.y)
+
+    editor(window).commit(set_locked(editor(window).doc, [pasted.id], True))
+    QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)  # refused: the table is locked
+    QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
+    assert (furniture(window)[-1].x, len(furniture(window))) == (pasted.x + 50, 4)
+
+
+def test_cutting_a_room_with_a_corner_selected_cuts_the_whole_room(window: MainWindow) -> None:
+    window.lock_action.trigger()  # unlock
+    (room,) = editor(window).doc.apartment.rooms
+    editor(window).select({room.id, room.vertices[0].id})
+    window.view.setFocus()
+
+    QTest.keyClick(window.view, Qt.Key.Key_X, Qt.KeyboardModifier.ControlModifier)
+
+    assert editor(window).doc.apartment.rooms == ()

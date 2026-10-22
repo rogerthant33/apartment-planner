@@ -147,8 +147,12 @@ class Commands:
         if self.clip.is_apartment and not self.view.can_edit_rooms():
             self.view.notify("They were copied but not cut: unlock the apartment to cut them.")
             return
-        self._cut = True
+        state = self.state
+        assert state is not None
+        before = state.doc
+        state.select(self.clip.ids)  # a whole room, not just a selected corner of it
         self.view.delete_selection()
+        self._cut = state.doc is not before  # a refused delete (locked items) only copied
 
     def paste(self) -> None:
         clip = self.clip

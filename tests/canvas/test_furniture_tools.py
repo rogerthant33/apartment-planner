@@ -174,3 +174,15 @@ def test_hidden_furniture_is_not_drawn_or_selectable(view: PlanView) -> None:
 
     assert [item.item_id for item in view.plan.furniture] == [table]
     assert view.state.selection == {view.state.doc.apartment.rooms[0].id}  # the room under it
+
+
+def test_locked_room_clicks_select_only_rooms_and_bands_only_furniture(view: PlanView) -> None:
+    sofa, table = ids(view)
+    (room,) = view.state.doc.apartment.rooms
+    view.state.select({sofa})
+
+    drag(view, (50, 250), (51, 251), shift=True)  # a jittery Shift+click on the floor
+    assert view.state.selection == {room.id}
+    drag(view, (150, 200), (250, 260), shift=True)  # a Shift+band over the table
+
+    assert view.state.selection == {table}
