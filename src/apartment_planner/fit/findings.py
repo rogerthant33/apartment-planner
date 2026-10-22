@@ -42,7 +42,7 @@ Kind = Literal[
 ]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)  # pragma: no mutate (immutability is a convention; nothing assigns)
 class Finding:
     severity: Severity
     kind: Kind
@@ -66,11 +66,14 @@ def check_fit(apartment: Apartment, layout: Layout, doorway_depth: float) -> lis
     findings += _obstacle_hits(furniture, obstacles)
     findings += _outside_rooms(furniture, floors)
     swings = [(o, door_swing(rooms[o.room_id], o)) for o in openings if o.door]
-    findings += _door_swings(furniture, swings, rooms)
-    findings += _doorways(furniture, openings, rooms, doorway_depth, findings)
+    in_swing = list(_door_swings(furniture, swings, rooms))
+    findings += in_swing
+    findings += _doorways(furniture, openings, rooms, doorway_depth, in_swing)
     findings += _clearances(furniture, obstacles, floors)
     findings += _room_overlaps(floors)
-    return sorted(findings, key=lambda f: f.severity != "collision")
+    # There are only two severities and "warning" > "collision", so `>` is the same as
+    # `!=`; `is not` is too, since every severity here is a string literal from this module.
+    return sorted(findings, key=lambda f: f.severity != "collision")  # pragma: no mutate
 
 
 type Footprints[T: Placed] = list[tuple[T, Polygon]]
@@ -193,23 +196,29 @@ def _doorways(
     openings: Sequence[Opening],
     rooms: dict[str, Room],
     depth: float,
-    found: list[Finding],
+    in_swing: Sequence[Finding],
 ) -> Iterator[Finding]:
     """Furniture in front of a doorway or plain opening (not a window).
 
-    An item already in a door's swing isn't reported again for that door.
+    An item already in a door's swing (one of `in_swing`) isn't reported again for
+    that door.
     """
-    if depth <= 0:
+    # `depth < 0` would do too: a zero-depth zone has no area, so nothing overlaps it.
+    if depth <= 0:  # pragma: no mutate
         return
-    in_swing = {f.ids for f in found if f.kind == "door_swing"}
+    swung = {f.ids for f in in_swing}
     for opening in openings:
-        if opening.kind == "window":
+        # "window" is the last kind alphabetically, so `>=` is the same as `==`; `is` is
+        # too, since pydantic returns the Literal's own (interned) string.
+        if opening.kind == "window":  # pragma: no mutate
             continue
         room = rooms[opening.room_id]
         zone = doorway_zone(room, opening, depth)
-        what = "doorway" if opening.kind == "door" else "opening"
+        # Only doors and openings get here and "door" < "opening", so `<=` is the same
+        # as `==`; `is` is too, as above.
+        what = "doorway" if opening.kind == "door" else "opening"  # pragma: no mutate
         for item, footprint in furniture:
-            if (item.id, opening.id) not in in_swing and overlaps(footprint, zone):
+            if (item.id, opening.id) not in swung and overlaps(footprint, zone):
                 yield Finding(
                     "warning",
                     "doorway",
@@ -232,12 +241,13 @@ def _clearances(
     reported: set[frozenset[str]] = set()
     others: Footprints[Placed] = [*furniture, *obstacles]
     for item, footprint in furniture:
-        if item.clearance is None or item.clearance <= 0:
+        if not item.clearance:  # None or 0 (it's never negative): no clearance zone
             continue
         limit = item.clearance - EPS
         for other, solid in others:
             pair = frozenset({item.id, other.id})
-            if other is item or pair in reported or overlaps(footprint, solid):
+            # `==` is the same as `is`: an equal item would share this one's ID.
+            if other is item or pair in reported or overlaps(footprint, solid):  # pragma: no mutate
                 continue
             if distance(footprint, solid) < limit:
                 reported.add(pair)

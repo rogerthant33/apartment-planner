@@ -44,7 +44,8 @@ def _corners(coords: Iterable[tuple[float, ...]]) -> list[XY]:
 
 
 def _edges(corners: list[XY]) -> list[Segment]:
-    return list(zip(corners, [*corners[1:], corners[0]], strict=True))
+    # Both sides have len(corners) items by construction.
+    return list(zip(corners, [*corners[1:], corners[0]], strict=True))  # pragma: no mutate
 
 
 def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | None:
@@ -58,7 +59,9 @@ def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | 
     dx, dy = direction
     hits: list[tuple[float, Segment]] = []
     for a, b in walls:
-        if dx * -(b[1] - a[1]) + dy * (b[0] - a[0]) >= 0:
+        # `> 0` would do too: a wall along the direction is parallel to the rays, so
+        # `_ray_hit` finds no hit on it anyway.
+        if dx * -(b[1] - a[1]) + dy * (b[0] - a[0]) >= 0:  # pragma: no mutate
             continue  # moving along or away from this wall's inside face
         for corner in corners:
             t = _ray_hit(corner, direction, a, b)
@@ -67,7 +70,7 @@ def _slide(corners: list[XY], walls: list[Segment], direction: XY) -> Segment | 
     for end in dict.fromkeys(end for wall in walls for end in wall):
         for a, b in _edges(corners):
             t = _ray_hit(end, (-dx, -dy), a, b)
-            if t is not None and t > 0:
+            if t:  # skip None (a miss) and 0 (the wall corner only touches the outline)
                 hits.append((t, ((end[0] - dx * t, end[1] - dy * t), end)))
     return min(hits, key=lambda hit: hit[0])[1] if hits else None
 

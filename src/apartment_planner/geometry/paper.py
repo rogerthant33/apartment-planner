@@ -22,7 +22,6 @@ def fitting_scale(
 def scale_bar_length(longest_cm: float) -> float:
     """The longest round length (1, 2 or 5 times a power of ten cm) up to `longest_cm`,
     and at least 1 cm."""
-    if longest_cm <= 1:
-        return 1.0
-    power = 10.0 ** math.floor(math.log10(longest_cm))
-    return next(step * power for step in (5, 2, 1) if step * power <= longest_cm)
+    longest = max(longest_cm, 1.0)
+    power = 10.0 ** math.floor(math.log10(longest))
+    return next(step * power for step in (5, 2, 1) if step * power <= longest)

@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from apartment_planner.fit.findings import Finding, check_fit
+from apartment_planner.fit.findings import Finding, check_fit, doorway_zone
 from apartment_planner.model import (
     Apartment,
     DoorSpec,
@@ -133,13 +133,46 @@ def test_furniture_in_front_of_a_doorway_or_opening_is_a_warning(
     assert all(f.severity == "warning" for f in findings)
 
 
-def test_doorway_zone_is_on_both_sides_of_the_wall_and_off_when_depth_is_zero() -> None:
+def test_doorway_zone_is_on_both_sides_of_the_wall() -> None:
     hall = rect_room(0, -200, 400, 200, "Hall")
     bench = rect_item(20, 20, 200, -30)  # in the hall, in front of the door
 
     (finding,) = check(bench, rooms=[ROOM, hall], openings=[opening("door")])
     assert finding.message == '"Item" blocks the doorway in Living room.'
-    assert check(bench, rooms=[ROOM, hall], openings=[opening("door")], depth=0) == []
+
+
+def test_doorway_zone_on_a_sloping_wall() -> None:
+    # Clockwise; the first wall runs from (100, 50) to (500, 350), a 3-4-5 slope.
+    corners = [(100, 50), (500, 350), (100, 350)]
+    room = Room(
+        id="r",
+        name="R",
+        vertices=tuple(Vertex(id=f"v{i}", x=x, y=y) for i, (x, y) in enumerate(corners)),
+    )
+    gap = Opening(
+        id="o", kind="opening", room_id="r", edge_start_vertex_id="v0", offset=100, width=80
+    )
+
+    zone = doorway_zone(room, gap, 50)
+
+    # The span runs from (148, 86) to (212, 134); 50 cm along the inward normal
+    # (-0.6, 0.8) is (-30, 40).
+    assert [(round(x, 9), round(y, 9)) for x, y in zone.exterior.coords[:-1]] == [
+        (178, 46),
+        (242, 94),
+        (182, 174),
+        (118, 126),
+    ]
+
+
+@pytest.mark.parametrize(("depth", "blocked"), [(0.5, True), (0, False), (-0.5, False)])
+def test_doorways_are_checked_only_with_a_positive_depth(depth: float, blocked: bool) -> None:
+    stool = rect_item(20, 20, 200, 10.2)  # 0.2 cm from the wall, in front of the opening
+    window = opening("window", offset=50)  # first: windows are skipped, not the end of the list
+
+    findings = check(stool, openings=[window, opening("opening")], depth=depth)
+
+    assert [f.message for f in findings] == ['"Item" blocks the opening in Living room.'] * blocked
 
 
 @pytest.mark.parametrize(("gap", "expected"), [(49.85, ["clearance"]), (49.95, [])])
@@ -147,8 +180,16 @@ def test_clearance_counts_only_when_closer_than_it_by_eps(gap: float, expected: 
     desk = square(150, 150, clearance=50)
     chair = square(250 + gap, 150)
 
-    assert kinds(check(desk, chair)) == expected
+    assert kinds(check(chair, desk)) == expected  # the chair first: it has no clearance
     assert check(square(150, 150), chair) == []  # no clearance set
+
+
+def test_clearance_limit_itself_is_not_too_close() -> None:
+    # 50.1 less EPS is exactly 50.0 in floating point, so both gaps sit on the limit.
+    desk = square(100, 150, clearance=50.1)  # 50 cm from the left wall
+    chair = square(250, 150)  # 50 cm from the desk
+
+    assert check(desk, chair) == []
 
 
 def test_clearance_is_reported_once_per_pair() -> None:
@@ -191,17 +232,24 @@ def test_rooms_may_share_walls_but_not_overlap(x: float, expected: list[str]) ->
 
 
 def test_invalid_shapes_are_reported_and_left_out_of_other_checks() -> None:
-    bow_tie = item(polygon_shape((0, 0), (100, 100), (100, 0), (0, 100)), 150, 150)
+    # It crosses itself, and its last edge is too short.
+    bow_tie = item(polygon_shape((0, 0), (100, 100), (100, 0), (0, 100), (0, 0.5)), 150, 150)
+    sofa, table = square(150, 150), square(160, 160)  # both overlap the bow tie too
 
-    (finding,) = check(bow_tie, square(150, 150))
+    findings = check(bow_tie, sofa, table)
 
-    assert (finding.kind, finding.ids) == ("invalid_shape", (bow_tie.id,))
-    assert finding.message.startswith('"Item" can\'t be checked: The outline crosses itself.')
+    assert [(f.kind, f.ids) for f in findings] == [
+        ("overlap", (sofa.id, table.id)),  # a collision, so it comes first
+        ("invalid_shape", (bow_tie.id,)),
+    ]
+    assert findings[1].message == (
+        '"Item" can\'t be checked: Edge 5 is 0.50 cm long; edges must be at least 1 cm.'
+    )
 
 
 def test_invalid_rooms_are_reported_and_their_walls_left_out() -> None:
-    # Clockwise overall, but the outline crosses itself.
-    corners = [(0, 0), (400, 0), (400, 300), (300, 300), (300, -100), (0, 300)]
+    # Clockwise overall, but the outline crosses itself, and its last edge is too short.
+    corners = [(0, 0), (400, 0), (400, 300), (300, 300), (300, -100), (0, 300), (0, 0.5)]
     crossed = Room(
         id="x",
         name="Hall",
@@ -212,12 +260,14 @@ def test_invalid_rooms_are_reported_and_their_walls_left_out() -> None:
     findings = check(square(200, 100, clearance=50), rooms=[crossed], openings=[door])
 
     assert [(f.kind, f.ids) for f in findings] == [("invalid_shape", ("x",))]
-    assert findings[0].message.startswith("Hall can't be checked: The outline crosses itself.")
+    assert findings[0].message == (
+        "Hall can't be checked: Edge 7 is 0.50 cm long; edges must be at least 1 cm."
+    )
 
 
 def test_collisions_come_before_warnings() -> None:
-    desk = square(99.85, 150, clearance=50)  # a wall warning, found last
+    bow_tie = item(polygon_shape((0, 0), (100, 100), (100, 0), (0, 100)))  # a warning, found first
 
-    findings = check(desk, square(500, 150))  # outside the room: a collision
+    findings = check(bow_tie, square(500, 150))  # outside the room: a collision
 
     assert [f.severity for f in findings] == ["collision", "warning"]

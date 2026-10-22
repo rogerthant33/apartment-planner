@@ -55,7 +55,8 @@ def plan_bounds(
         boxes.append(MultiPoint(points).bounds)
     if not boxes:
         return None
-    lefts, tops, rights, bottoms = zip(*boxes, strict=True)
+    # Every Shapely bounds is a 4-tuple, so the boxes are all the same length.
+    lefts, tops, rights, bottoms = zip(*boxes, strict=True)  # pragma: no mutate
     return min(lefts), min(tops), max(rights), max(bottoms)
 
 
