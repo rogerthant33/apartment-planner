@@ -40,6 +40,7 @@ def outside(item: Polygon, container: BaseGeometry, eps: float = EPS) -> bool:
     return is_substantial(item.difference(container), eps)
 
 
-def distance(a: Polygon, b: Polygon) -> float:
-    """Minimum distance between two polygons in cm; 0 if they touch or overlap."""
+def distance(a: BaseGeometry, b: BaseGeometry) -> float:
+    """Minimum distance between two shapes (polygons, or walls as lines) in cm; 0 if
+    they touch or overlap."""
     return float(a.distance(b))

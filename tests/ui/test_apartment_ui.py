@@ -5,11 +5,12 @@ import pytest
 from PySide6.QtCore import QSettings
 from pytestqt.qtbot import QtBot
 
-from apartment_planner.model import DoorSpec, Opening, new_project
+from apartment_planner.model import DoorSpec, Opening, RectShape, new_project
 from apartment_planner.persistence.archive import ProjectFile
 from apartment_planner.persistence.files import create_project_file
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.openings import add_opening
+from apartment_planner.state.furniture import add_furniture
+from apartment_planner.state.openings import add_opening, update_opening
 from apartment_planner.state.rooms import add_room
 from apartment_planner.ui.main_window import MainWindow
 from tests.factories import NOW
@@ -95,3 +96,22 @@ def test_locked_apartment_shows_the_door_read_only(window: MainWindow) -> None:
     editor(window).select({door(window).id})
 
     assert not window.properties.opening_page.kind.isEnabled()
+
+
+def test_doorway_clearance_setting_controls_doorway_warnings(window: MainWindow) -> None:
+    doc = update_opening(
+        editor(window).doc, door(window).id, door=DoorSpec(hinge="start", swing="out")
+    )
+    doc, _ = add_furniture(doc, RectShape(width=20, depth=20), (100, 30), "Stool")
+    editor(window).commit(doc)
+    assert [f.kind for f in window.view.findings] == ["doorway"]
+    page = window.properties.settings_page
+
+    page.doorway.setText("wide")
+    page.doorway.editingFinished.emit()
+    assert page.error.text() == "Doorway clearance: enter a length such as 60, or 0 for none."
+    page.doorway.setText("0")
+    page.doorway.editingFinished.emit()
+
+    assert window.findings.summary.text() == "Everything fits."
+    assert editor(window).doc.settings.default_clearance == 0

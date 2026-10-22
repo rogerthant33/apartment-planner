@@ -266,11 +266,15 @@ class SettingsPage(QWidget):
         self.grid.editingFinished.connect(self._set_grid)
         self.snap = QCheckBox("Snap to grid and rooms")
         self.snap.toggled.connect(self._set_snap)
+        self.doorway = QLineEdit()
+        self.doorway.setToolTip("How far in front of doorways furniture counts as in the way")
+        self.doorway.editingFinished.connect(self._set_doorway)
         self.error = error_label()
         form = QFormLayout()
         form.addRow("Units", self.unit)
         form.addRow("Grid size", self.grid)
         form.addRow(self.snap)
+        form.addRow("Doorway clearance", self.doorway)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Project settings"))
         layout.addLayout(form)
@@ -283,7 +287,8 @@ class SettingsPage(QWidget):
         self.unit.setCurrentText(settings.display_unit)
         self.grid.setText(format_length(settings.grid_size, settings.display_unit))
         self.snap.setChecked(settings.snap_enabled)
-        for widget in (self.unit, self.grid, self.snap):
+        self.doorway.setText(format_length(settings.default_clearance, settings.display_unit))
+        for widget in (self.unit, self.grid, self.snap, self.doorway):
             widget.setEnabled(editable)
         self.state = state
 
@@ -309,6 +314,18 @@ class SettingsPage(QWidget):
             return
         show_error(self.error, None)
         self._update(grid_size=size)
+
+    def _set_doorway(self) -> None:
+        if self.state is None:
+            return
+        settings = self.state.doc.settings
+        depth = parse_length(self.doorway.text(), settings.display_unit)
+        if depth is None:
+            show_error(self.error, "Doorway clearance: enter a length such as 60, or 0 for none.")
+            self.doorway.setText(format_length(settings.default_clearance, settings.display_unit))
+            return
+        show_error(self.error, None)
+        self._update(default_clearance=depth)
 
 
 class PropertiesPanel(QStackedWidget):

@@ -33,11 +33,12 @@ from apartment_planner.state.furniture import (
     selected_furniture,
 )
 from apartment_planner.state.openings import selected_openings
-from apartment_planner.state.placed import selected_obstacles
+from apartment_planner.state.placed import selectable, selected_obstacles
 from apartment_planner.state.rooms import selected_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.commands import Commands
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
+from apartment_planner.ui.findings_panel import FindingsPanel
 from apartment_planner.ui.open_project import OpenProject, local_now
 from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
 from apartment_planner.ui.reveal import show_in_folder
@@ -141,6 +142,9 @@ class MainWindow(QMainWindow):
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
         self.tools_panel = self._add_panel("Tools", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
+        self.findings = FindingsPanel()
+        self.findings.finding_activated.connect(self._select_finding)
+        self.findings_panel = self._add_panel("Fit Checks", right, self.findings)
         self._create_menus()
         self._create_toolbar()
         geometry = self.settings.value(GEOMETRY_KEY)
@@ -347,6 +351,11 @@ class MainWindow(QMainWindow):
         if self.editor is not None and not self.editor.doc.settings.apartment_locked:
             self.editor.select({room_id})
 
+    def _select_finding(self, ids: tuple[str, ...]) -> None:
+        if self.editor is not None:
+            editable = self.view.can_edit_rooms()
+            self.editor.select(selectable(self.editor.doc, ids, apartment_editable=editable))
+
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.close_project():
             event.ignore()
@@ -400,6 +409,7 @@ class MainWindow(QMainWindow):
         self.view.refresh()
         self.tools.refresh(state.doc, state.selection, self.view.hidden)
         self.properties.refresh(state, self.view.editable)
+        self.findings.show_findings(self.view.findings)
         self._update_edit_actions()
 
     def _update_edit_actions(self) -> None:
@@ -439,6 +449,7 @@ class MainWindow(QMainWindow):
         editable = project is not None and project.read_only_reason is None
         self.tools_panel.setVisible(project is not None)
         self.properties_panel.setVisible(project is not None)
+        self.findings_panel.setVisible(project is not None)
         self.toolbar.setVisible(project is not None)
         for action in (self.close_action, self.save_copy_action, self.show_in_folder_action):
             action.setEnabled(project is not None)

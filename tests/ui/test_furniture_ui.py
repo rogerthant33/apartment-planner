@@ -140,3 +140,16 @@ def test_unticked_furniture_is_hidden(window: MainWindow) -> None:
 
     assert window.view.hidden == {table.id}
     assert window.view.plan.furniture == []
+
+
+def test_fit_checks_panel_lists_findings_and_selects_their_items(window: MainWindow) -> None:
+    first, second = add_table(window), add_table(window)  # both at the view's centre
+    panel = window.findings
+
+    assert panel.summary.text() == "1 collision, 0 warnings"
+    editor(window).select(())
+    panel.list.itemClicked.emit(panel.list.item(0))
+
+    assert editor(window).selection == {first.id, second.id}
+    window.undo_action.trigger()
+    assert panel.summary.text() == "Everything fits."

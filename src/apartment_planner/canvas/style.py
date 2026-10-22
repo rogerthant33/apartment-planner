@@ -13,6 +13,8 @@ FURNITURE_OUTLINE = QColor("#4a453d")
 OBSTACLE_HATCH = QColor("#6d665b")
 ACCENT = QColor("#2f6fde")
 INVALID = QColor("#d32f2f")  # reserved for collisions and invalid edits
+WARNING = QColor("#d98a00")  # fit-check warnings
+CLEARANCE_FILL = QColor(47, 111, 222, 28)
 
 OUTLINE_PX = 2.0
 HANDLE_PX = 9

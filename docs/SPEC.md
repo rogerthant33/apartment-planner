@@ -255,17 +255,28 @@ Rendering uses the true ellipse.
 | Furniture overlaps an obstacle | collision |
 | Furniture not contained in the union of rooms (crosses a wall or sits outside) | collision |
 | Furniture intersects a door's swing area | collision |
-| Furniture blocks a doorway or opening (within `clearance` depth on either side) | warning |
+| Furniture blocks a doorway or opening (within `default_clearance` depth on either side) | warning |
 | Item's clearance zone intersects another item, obstacle or wall | warning |
 | Rooms overlap each other | warning |
+| A room or polygon shape is invalid (it is then left out of the other checks) | warning |
 
-- Clearance violation means `distance(a, b) < clearance - EPS`. The clearance
-  zone is drawn as `polygon.buffer(clearance)`, translucent, behind the item.
-- Collisions are red, warnings amber. Affected items are outlined; the right
-  panel explains each finding, and clicking one selects the items.
+- Clearance zones are opt-in: only items with `clearance` set have one, so
+  furniture flush against a wall isn't flagged by default. Clearance violation
+  means `distance(a, b) < clearance - EPS`; items that already overlap aren't
+  reported again, and each pair is reported once. Every room edge counts as a
+  wall, including edges shared by two rooms. The zone is drawn as
+  `polygon.buffer(clearance)`, translucent, behind the item.
+- `settings.default_clearance` is the depth kept free in front of doors and
+  plain openings (not windows), on both sides of the wall. An item in a
+  door's swing is a collision and isn't also reported as blocking that door.
+- Collisions are red, warnings amber. Affected items (furniture, obstacles,
+  rooms) are outlined. The Fit Checks panel, below the properties, counts and
+  explains the findings, collisions first. Clicking one selects its furniture,
+  or its obstacles or rooms while the apartment is unlocked.
 - Selecting two items shows the minimum distance between them. Selecting one
-  item shows its distance to the nearest wall along its rotated axes (left,
-  right, front, back).
+  item shows, for each of its rotated sides (left, right, back, front), how
+  far it could slide that way before reaching a wall. Flush sides show no
+  readout.
 - Nothing is ever blocked. Findings are informational.
 
 ## 8. Project files and saving
@@ -394,7 +405,7 @@ class ProjectSettings:
     display_unit: Literal["mm", "cm", "m"] = "cm"
     grid_size: float = 10           # cm, > 0
     snap_enabled: bool = True
-    default_clearance: float = 60   # cm, >= 0
+    default_clearance: float = 60   # cm, >= 0: depth kept free in front of doorways
     apartment_locked: bool = False
 
 class Apartment:
@@ -448,7 +459,7 @@ class FurnitureItem(Placed):
     room_id: ID | None = None
     locked: bool = False
     group_id: ID | None = None
-    clearance: float | None = None  # cm, overrides settings.default_clearance
+    clearance: float | None = None  # cm kept free around the item; None: no zone
     meta: FurnitureMeta | None = None
 
 class Group: id: ID; name: str

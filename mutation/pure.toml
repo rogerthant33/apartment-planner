@@ -5,6 +5,7 @@
 # base interpreter, not the venv.
 [cosmic-ray]
 module-path = [
+    "src/apartment_planner/fit",
     "src/apartment_planner/geometry",
     "src/apartment_planner/model",
     "src/apartment_planner/state",
@@ -12,7 +13,7 @@ module-path = [
 ]
 excluded-modules = ["src/apartment_planner/*/__init__.py"]
 timeout = 60.0
-test-command = "uv run --no-sync python -m pytest -x -q -p no:cacheprovider --hypothesis-profile=mutation tests/geometry tests/model tests/state tests/persistence/test_autosave.py tests/persistence/test_archive.py tests/persistence/test_fixtures.py"
+test-command = "uv run --no-sync python -m pytest -x -q -p no:cacheprovider --hypothesis-profile=mutation tests/fit tests/geometry tests/model tests/state tests/persistence/test_autosave.py tests/persistence/test_archive.py tests/persistence/test_fixtures.py"
 
 [cosmic-ray.distributor]
 name = "local"
