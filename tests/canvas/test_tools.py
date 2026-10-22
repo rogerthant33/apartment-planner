@@ -194,7 +194,7 @@ def test_crossing_polygon_is_refused_and_kept_for_fixing(
     view.tool.key(Qt.Key.Key_Return)
 
     assert view.state.doc.apartment.rooms == ()
-    assert "crosses itself" in messages[0]
+    assert "crosses itself" in messages[-1]
     view.tool.key(Qt.Key.Key_Backspace)
     view.tool.key(Qt.Key.Key_Return)
     assert len(view.state.doc.apartment.rooms) == 1
@@ -271,3 +271,39 @@ def test_a_read_only_project_selects_rooms_but_does_not_move_them(view: PlanView
 
     assert view.state.selection == {only.id}
     assert corners(room(view.state.doc, only.id)) == SQUARE
+
+
+def test_polygon_finishes_on_double_click_and_right_click_removes_a_corner(view: PlanView) -> None:
+    view.set_tool("polygon")
+    for point in [(0, 0), (300, 0), (300, 200), (100, 300)]:
+        view.tool.press(at(*point))
+    view.tool.right_click(at(100, 300))  # takes back (100, 300)
+    view.tool.right_click(at(0, 0))  # and (300, 200)
+
+    view.tool.press(at(300, 200))
+    view.tool.double_click(at(300, 200))
+
+    (created,) = view.state.doc.apartment.rooms
+    assert corners(created) == [(0, 0), (300, 0), (300, 200)]
+    assert view.tool is view.tools["select"]
+
+
+def test_clicking_the_same_corner_twice_adds_it_once(view: PlanView) -> None:
+    view.set_tool("polygon")
+    for point in [(0, 0), (300, 0), (300, 0.9), (300, 200)]:  # 0.9 cm apart: the same corner
+        view.tool.press(at(*point, snapping=False))
+
+    assert view.tool.key(Qt.Key.Key_Return)
+
+    assert corners(view.state.doc.apartment.rooms[0]) == [(0, 0), (300, 0), (300, 200)]
+
+
+def test_a_double_click_with_too_few_corners_does_nothing(view: PlanView) -> None:
+    view.set_tool("polygon")
+    view.tool.press(at(0, 0))
+    view.tool.press(at(300, 0))
+
+    view.tool.double_click(at(300, 0))
+
+    assert view.state.doc.apartment.rooms == ()
+    assert view.tool is view.tools["polygon"]

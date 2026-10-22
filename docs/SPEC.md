@@ -102,9 +102,9 @@ after confirmation), Show in Folder, and changing the projects folder.
 
 ### Rooms
 
-- Draw rectangular rooms (drag) or polygon rooms (click points, close on the
-  first point or with Enter; Backspace removes the last point, Escape
-  cancels). New rooms are named "Room 1", "Room 2", … and selected.
+- Draw rectangular rooms (drag) or rooms of any shape with the Custom Shape
+  tool (see "Custom polygon drawing" in §6). New rooms are named "Room 1",
+  "Room 2", … and selected.
 - Edit vertices by dragging; edit edge lengths numerically in the properties
   panel (edges are numbered from the first vertex; the edge's end vertex
   moves along the edge direction).
@@ -213,7 +213,8 @@ product details. Hovering over Clearance explains it.
   the items), drag, move multiple selected items. Ctrl is Cmd on macOS. Furniture can be selected whether or not the
   apartment is locked.
 - Resize with handles or numeric input; rotate with a handle (snaps to 15°
-  increments, hold Alt for free rotation) or numeric input. A single item
+  increments, hold Alt for free rotation), numeric input, or the ↺ / ↻ buttons
+  under the Rotation field (15° a click; hold to keep turning). A single item
   turns about its origin; several turn about the centre of their footprints.
 - Duplicate (copies are unlocked and offset by 50 cm; copies of a group form a
   new group), delete, rename, group/ungroup (groups select and move together;
@@ -225,10 +226,13 @@ product details. Hovering over Clearance explains it.
 
 ### Custom polygon drawing
 
-Two tools draw polygons the same way: Polygon Room (P, only while the
-apartment is unlocked) and Custom Shape (in "Add furniture", any time), which
-makes a piece of furniture. Click points; close on the first point or with
-Enter; Escape cancels. Show edge lengths while drawing and
+Two tools named Custom Shape draw polygons the same way: one under Tools (P)
+draws a room, only while the apartment is unlocked; the one under "Add
+furniture" draws a piece of furniture, any time. Click each corner. Finish by
+clicking the first corner again, double-clicking, or pressing Enter. Right-click
+or Backspace removes the last corner; Escape cancels the drawing. A click on the
+last corner again (after snapping, less than 1 cm from it) adds nothing. Picking
+the tool shows these instructions in the status bar. Show edge lengths while drawing and
 after creation. Edit vertices by dragging or numerically. Validated like
 rooms (either winding is fine). The shape's origin is the centre of its
 bounding box.
@@ -251,7 +255,7 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | Space + drag, middle-drag | Pan |
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
-| V, M, P | Select tool, rectangle room tool, polygon room tool |
+| V, M, P | Select tool, rectangle room tool, custom-shape room tool |
 | D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |

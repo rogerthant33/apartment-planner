@@ -54,6 +54,9 @@ def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
     return row, buttons
 
 
+ROTATE_STEP = 15.0  # degrees per click of a turn button, as the rotate handle snaps
+
+
 class FurniturePage(QWidget):
     """The fields of one furniture item or obstacle. Each commits on Enter or focus-out.
 
@@ -75,6 +78,8 @@ class FurniturePage(QWidget):
             field.editingFinished.connect(lambda key=key: self._commit_field(key))
             form.addRow(label, field)
             self.fields[key] = field
+            if key == "rotation":
+                form.addRow("", self._turn_buttons())
             if key == "depth":
                 form.addRow("Colour", self.colour)
         clearance = self.fields["clearance"]
@@ -119,6 +124,8 @@ class FurniturePage(QWidget):
             field.setEnabled(editable)
         self.colour.setEnabled(editable)
         self.colour.show_colour(item.color)
+        for turn in self.turn_buttons.values():
+            turn.setEnabled(editable)
         furniture = isinstance(item, FurnitureItem)
         self.title.setText("Furniture" if furniture else "Obstacle (part of the apartment)")
         self._form.setRowVisible(self.room, furniture)
@@ -159,6 +166,32 @@ class FurniturePage(QWidget):
         if text == field_values(item, unit).get(key, ""):
             return
         self._commit(lambda doc: update_placed(doc, item.id, **parse_field(item, key, text, unit)))
+
+    def _turn_buttons(self) -> QWidget:
+        """Turn the item anticlockwise or clockwise by ROTATE_STEP."""
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.turn_buttons: dict[str, QToolButton] = {}
+        for name, text, step in (
+            ("anticlockwise", f"↺ {ROTATE_STEP:g}°", -ROTATE_STEP),
+            ("clockwise", f"↻ {ROTATE_STEP:g}°", ROTATE_STEP),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setToolTip(f"Turn {ROTATE_STEP:g}° {name}")
+            button.setAutoRepeat(True)  # hold it down to keep turning
+            button.clicked.connect(lambda _=False, step=step: self._turn(step))
+            layout.addWidget(button)
+            self.turn_buttons[name] = button
+        layout.addStretch()
+        return row
+
+    def _turn(self, degrees: float) -> None:
+        item = self._item()
+        if item is not None:
+            rotation = item.rotation + degrees
+            self._commit(lambda doc: update_placed(doc, item.id, rotation=rotation))
 
     def _set_colour(self, colour: str | None) -> None:
         item = self._item()

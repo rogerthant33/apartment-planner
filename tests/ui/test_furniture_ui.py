@@ -185,3 +185,17 @@ def test_colour_is_picked_from_the_colour_dialog_and_can_be_reset(
     window.undo_action.trigger()
     assert furniture(window)[-1].color == "#a0b0c0"
     assert picker.colour == "#a0b0c0"
+
+
+def test_turn_buttons_rotate_either_way_and_update_the_field(window: MainWindow) -> None:
+    add_table(window)
+    page = window.properties.furniture_page
+
+    page.turn_buttons["anticlockwise"].click()
+    assert furniture(window)[-1].rotation == 345
+    assert page.fields["rotation"].text() == "345°"
+    page.turn_buttons["clockwise"].click()
+    page.turn_buttons["clockwise"].click()
+
+    assert furniture(window)[-1].rotation == 15
+    assert page.fields["rotation"].text() == "15°"
