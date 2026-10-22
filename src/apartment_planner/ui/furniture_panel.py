@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 
 from apartment_planner.model import FurnitureItem, Placed, PolygonShape, ProjectDoc, Room
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import (
     set_locked,
     set_shape_edge_length,
@@ -25,7 +24,7 @@ from apartment_planner.state.furniture_fields import FIELDS, field_values, parse
 from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
 from apartment_planner.ui.colour_button import ColourButton
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 
 
 def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
@@ -186,17 +185,14 @@ class FurniturePage(QWidget):
 
     def _commit(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         assert self.state is not None
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            self._reject(str(error))
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        commit_or_refuse(self.state, self.error, change, self._refresh)
 
     def _reject(self, message: str) -> None:
-        """Inline refusal: the fields go back to the document's values."""
         show_error(self.error, message)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """Put the fields back to the document's values."""
         item, state = self._item(), self.state
         if item is not None and state is not None:
             self.show_item(state, item, self.editable)

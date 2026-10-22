@@ -7,11 +7,11 @@ user, so the canvas can revert and say why.
 import math
 from collections.abc import Callable, Iterable, Sequence
 
-from apartment_planner.geometry.hits import room_at
 from apartment_planner.geometry.polygon import is_clockwise, signed_area, validate_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import Opening, Point, ProjectDoc, Room, Vertex, new_id
 from apartment_planner.state.errors import EditError
+from apartment_planner.state.furniture import reassign_rooms
 
 MIN_VERTICES = 3
 
@@ -75,14 +75,12 @@ def rename_room(doc: ProjectDoc, room_id: str, name: str) -> ProjectDoc:
     name = name.strip()
     if not name:
         raise EditError("Enter a name for the room.")
-    updated = room(doc, room_id).evolve(name=name)
-    return _with_rooms(doc, (updated if r.id == room_id else r for r in doc.apartment.rooms))
+    return _replace_room(doc, room(doc, room_id).evolve(name=name))
 
 
 def recolour_room(doc: ProjectDoc, room_id: str, color: str | None) -> ProjectDoc:
     """Fill the room with `color` (#rrggbb), or the default fill for None."""
-    changed = room(doc, room_id).evolve(color=color)
-    return _with_rooms(doc, [changed if r.id == room_id else r for r in doc.apartment.rooms])
+    return _replace_room(doc, room(doc, room_id).evolve(color=color))
 
 
 def delete_room(doc: ProjectDoc, room_id: str) -> ProjectDoc:
@@ -128,11 +126,14 @@ def duplicate_room(doc: ProjectDoc, room_id: str, offset: XY) -> tuple[ProjectDo
 
 
 def selected_room(doc: ProjectDoc, selection: frozenset[str]) -> Room | None:
-    """The selected room, or the room of the selected vertex."""
-    for candidate in doc.apartment.rooms:
-        if candidate.id in selection or any(v.id in selection for v in candidate.vertices):
-            return candidate
-    return None
+    """The selected room, or the room of the selected vertex; None unless exactly one
+    room is selected (several selected rooms move together, but aren't reshaped)."""
+    chosen = [
+        r
+        for r in doc.apartment.rooms
+        if r.id in selection or any(v.id in selection for v in r.vertices)
+    ]
+    return chosen[0] if len(chosen) == 1 else None
 
 
 def selected_rooms(doc: ProjectDoc, selection: Iterable[str]) -> list[Room]:
@@ -150,16 +151,7 @@ def move_rooms(doc: ProjectDoc, ids: Iterable[str], delta: XY) -> ProjectDoc:
         else r
         for r in doc.apartment.rooms
     ]
-    doc = _with_rooms(doc, rooms)
-    layouts = tuple(
-        layout.evolve(
-            furniture=tuple(
-                f.evolve(room_id=room_at(doc.apartment.rooms, (f.x, f.y))) for f in layout.furniture
-            )
-        )
-        for layout in doc.layouts
-    )
-    return doc.evolve(layouts=layouts)
+    return reassign_rooms(_with_rooms(doc, rooms))
 
 
 def delete_selection(doc: ProjectDoc, selection: frozenset[str]) -> ProjectDoc:
@@ -287,6 +279,10 @@ def _check(points: Sequence[Point]) -> None:
     problem = outline_problem(points)
     if problem is not None:
         raise EditError(problem)
+
+
+def _replace_room(doc: ProjectDoc, updated: Room) -> ProjectDoc:
+    return _with_rooms(doc, (updated if r.id == updated.id else r for r in doc.apartment.rooms))
 
 
 def _with_rooms(doc: ProjectDoc, rooms: Iterable[Room]) -> ProjectDoc:

@@ -9,7 +9,7 @@ import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
-from apartment_planner.geometry.hits import room_at
+from apartment_planner.geometry.hits import room_at, room_locator
 from apartment_planner.geometry.polygon import edge_lengths, validate_polygon
 from apartment_planner.geometry.shapes import placed_polygon
 from apartment_planner.geometry.transform import XY, rotate
@@ -353,6 +353,22 @@ def _unlocked(doc: ProjectDoc, ids: Iterable[str]) -> list[FurnitureItem]:
 def _placed_in_room(doc: ProjectDoc, item: FurnitureItem) -> FurnitureItem:
     """`item` with `room_id` naming the room its origin is in, if any."""
     return item.evolve(room_id=room_at(doc.apartment.rooms, (item.x, item.y)))
+
+
+def reassign_rooms(doc: ProjectDoc) -> ProjectDoc:
+    """Every item in every layout with `room_id` naming the room its origin is in,
+    after the rooms have changed."""
+    locate = room_locator(doc.apartment.rooms)
+
+    def placed(item: FurnitureItem) -> FurnitureItem:
+        room_id = locate((item.x, item.y))
+        return item if item.room_id == room_id else item.evolve(room_id=room_id)
+
+    layouts = tuple(
+        layout.evolve(furniture=tuple(placed(f) for f in layout.furniture))
+        for layout in doc.layouts
+    )
+    return doc.evolve(layouts=layouts)
 
 
 def _replace(doc: ProjectDoc, updated: dict[str, FurnitureItem]) -> ProjectDoc:

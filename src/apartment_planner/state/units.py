@@ -3,6 +3,8 @@
 import re
 from typing import Literal
 
+from apartment_planner.state.errors import EditError
+
 Unit = Literal["mm", "cm", "m"]
 
 CM_PER_UNIT: dict[str, float] = {"mm": 0.1, "cm": 1.0, "m": 100.0}
@@ -28,6 +30,14 @@ def parse_length(text: str, unit: Unit) -> float | None:
         return None
     value = float(match[1].replace(",", "."))
     return value * CM_PER_UNIT[(match[2] or unit).lower()]
+
+
+def parse_angle(text: str, label: str) -> float:
+    """Degrees from "90", "37,5°" and the like. Raises EditError naming the field."""
+    try:
+        return float(text.strip().removesuffix("°").replace(",", "."))
+    except ValueError:
+        raise EditError(f"{label}: enter an angle in degrees, such as 90.") from None
 
 
 def format_area(cm2: float) -> str:

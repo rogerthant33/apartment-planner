@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 from apartment_planner.model import ProjectDoc
 from apartment_planner.state.background import remove_background, update_background
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.state.units import parse_angle
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label
 
 
 class BackgroundBox(QGroupBox):
@@ -96,14 +96,8 @@ class BackgroundBox(QGroupBox):
         self._change(opacity=self.opacity.value() / 100)
 
     def _set_rotation(self) -> None:
-        try:
-            rotation = float(self.rotation.text().strip().removesuffix("°").replace(",", "."))
-        except ValueError:
-            show_error(self.error, "Rotation: enter an angle in degrees, such as 90.")
-            if self.state is not None:
-                self.show_background(self.state, self.isEnabled())
-            return
-        self._change(rotation=rotation)
+        text = self.rotation.text()
+        self._commit(lambda doc: update_background(doc, rotation=parse_angle(text, "Rotation")))
 
     def _change(self, **changes: object) -> None:
         bg = self.state.doc.background if self.state is not None else None
@@ -111,12 +105,8 @@ class BackgroundBox(QGroupBox):
             self._commit(lambda doc: update_background(doc, **changes))
 
     def _commit(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
-        if self.state is None:
-            return
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            show_error(self.error, str(error))
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        state = self.state
+        if state is not None:
+            commit_or_refuse(
+                state, self.error, change, lambda: self.show_background(state, self.isEnabled())
+            )

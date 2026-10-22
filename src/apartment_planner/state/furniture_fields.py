@@ -9,7 +9,7 @@ from typing import Any
 from apartment_planner.geometry.handles import box_size, with_box_size
 from apartment_planner.model import FurnitureItem, FurnitureMeta, Placed
 from apartment_planner.state.errors import EditError
-from apartment_planner.state.units import Unit, format_length, parse_length
+from apartment_planner.state.units import Unit, format_length, parse_angle, parse_length
 
 FIELDS: dict[str, str] = {
     "name": "Name",
@@ -73,10 +73,7 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
         case "x" | "y":
             return {key: _coordinate(text, unit, label)}
         case "rotation":
-            try:
-                return {"rotation": float(text.removesuffix("°").replace(",", "."))}
-            except ValueError:
-                raise EditError(f"{label}: enter an angle in degrees, such as 90.") from None
+            return {"rotation": parse_angle(text, label)}
         case "width" | "depth":
             size = box_size(item.shape)
             if size is None:

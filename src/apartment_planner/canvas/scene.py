@@ -23,6 +23,7 @@ from apartment_planner.geometry.hits import shape_corners
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
 from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
 from apartment_planner.state.placed import selected_placed
+from apartment_planner.state.rooms import selected_room
 from apartment_planner.state.units import Unit, format_length
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
@@ -81,8 +82,7 @@ class PlanScene(QGraphicsScene):
             self.background = BackgroundItem(doc.background, background)
             self.addItem(self.background)
         handles = editable and not doc.settings.apartment_locked
-        # Corners can be dragged on one room at a time; several selected rooms move.
-        one_room = sum(room.id in selection for room in doc.apartment.rooms) == 1
+        reshaped = selected_room(doc, selection)  # corners show on one room at a time
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -92,7 +92,7 @@ class PlanScene(QGraphicsScene):
                 selected=selected,
                 dimensions=dimensions,
                 openings=doc.apartment.openings,
-                handles=selected and handles and one_room,
+                handles=handles and reshaped is not None and reshaped.id == room.id,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
             )

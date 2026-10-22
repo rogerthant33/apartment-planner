@@ -391,3 +391,11 @@ def test_moving_rooms_takes_their_openings_and_reassigns_furniture() -> None:
     assert moved.apartment.openings == doc.apartment.openings  # they follow their vertices
     assert furniture_item(doc, sofa).room_id == r.id
     assert furniture_item(moved, sofa).room_id is None  # the room left it behind
+
+
+def test_selected_room_is_only_one_room() -> None:
+    doc, r = with_room()
+    doc, other_id = add_room(doc, [(400, 0), (600, 0), (600, 300), (400, 300)])
+
+    assert selected_room(doc, frozenset({r.id, r.vertices[0].id})) == r
+    assert selected_room(doc, frozenset({r.id, other_id})) is None

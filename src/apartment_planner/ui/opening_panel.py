@@ -7,7 +7,6 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QLabel, QLineEdit, QVBoxLa
 
 from apartment_planner.model import DoorSpec, Opening, ProjectDoc
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import (
     opening,
     parse_opening_offset,
@@ -17,7 +16,7 @@ from apartment_planner.state.openings import (
 from apartment_planner.state.rooms import room
 from apartment_planner.state.units import format_length
 from apartment_planner.ui.furniture_panel import action_buttons
-from apartment_planner.ui.inline_errors import error_label, show_error
+from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 
 KINDS = {"door": "Door", "window": "Window", "opening": "Opening (no door)"}
 HINGES = {"start": "At the wall's start", "end": "At the wall's end"}
@@ -130,13 +129,10 @@ class OpeningPage(QWidget):
 
     def _apply(self, change: Callable[[ProjectDoc], ProjectDoc]) -> None:
         assert self.state is not None
-        try:
-            doc = change(self.state.doc)
-        except EditError as error:
-            show_error(self.error, str(error))
-            current = self._opening()
-            if current is not None:
-                self.show_opening(self.state, current, self.editable)
-            return
-        show_error(self.error, None)
-        self.state.commit(doc)
+        commit_or_refuse(self.state, self.error, change, self._refresh)
+
+    def _refresh(self) -> None:
+        """Put the fields back to the document's values."""
+        current, state = self._opening(), self.state
+        if current is not None and state is not None:
+            self.show_opening(state, current, self.editable)
