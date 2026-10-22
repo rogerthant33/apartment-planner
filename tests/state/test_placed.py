@@ -9,9 +9,11 @@ from apartment_planner.state.placed import (
     move_placed,
     placed_item,
     rotate_placed,
+    selectable,
     selected_placed,
     update_placed,
 )
+from apartment_planner.state.rooms import add_room
 from tests.factories import NOW
 
 COLUMN = RectShape(width=30, depth=30)
@@ -79,3 +81,14 @@ def test_duplicate_and_delete_obstacles() -> None:
     )
     doc = delete_placed(doc, [first, copy_id])
     assert [o.id for o in doc.apartment.obstacles] == [second]
+
+
+def test_selectable_prefers_furniture_then_apartment_parts_when_editable() -> None:
+    doc, sofa, column, _ = project()
+    doc, room = add_room(doc, [(0, 0), (400, 0), (400, 300), (0, 300)])
+    doc, other = add_room(doc, [(400, 0), (500, 0), (500, 300), (400, 300)])
+
+    assert selectable(doc, [column, sofa, "door"], apartment_editable=True) == {sofa}
+    assert selectable(doc, [column, room], apartment_editable=True) == {column}
+    assert selectable(doc, [room, other], apartment_editable=True) == {room, other}
+    assert selectable(doc, [column, room], apartment_editable=False) == set()

@@ -113,3 +113,17 @@ def _replace(doc: ProjectDoc, updated: dict[str, Obstacle]) -> ProjectDoc:
 
 def _with_obstacles(doc: ProjectDoc, obstacles: tuple[Obstacle, ...]) -> ProjectDoc:
     return doc.evolve(apartment=doc.apartment.evolve(obstacles=obstacles))
+
+
+def selectable(doc: ProjectDoc, ids: Iterable[str], *, apartment_editable: bool) -> frozenset[str]:
+    """What clicking on something that involves `ids` (such as a fit finding) selects.
+
+    Furniture if there is any, otherwise obstacles or rooms while the apartment
+    can be edited: a selection holds one kind.
+    """
+    ids = set(ids)
+    furniture_ids = {f.id for f in furniture.selected_furniture(doc, ids)}
+    if furniture_ids or not apartment_editable:
+        return frozenset(furniture_ids)
+    obstacles = {o.id for o in selected_obstacles(doc, ids)}
+    return frozenset(obstacles or {r.id for r in doc.apartment.rooms if r.id in ids})

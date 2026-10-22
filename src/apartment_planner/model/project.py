@@ -63,7 +63,7 @@ class ProjectSettings(Model):
     display_unit: Literal["mm", "cm", "m"] = "cm"
     grid_size: Positive = 10.0
     snap_enabled: bool = True
-    default_clearance: NonNegative = 60.0
+    default_clearance: NonNegative = 60.0  # cm kept free in front of doorways
     apartment_locked: bool = False
 
 
@@ -152,7 +152,7 @@ class FurnitureItem(Placed):
     room_id: ID | None = None
     locked: bool = False
     group_id: ID | None = None
-    clearance: NonNegative | None = None  # overrides settings.default_clearance
+    clearance: NonNegative | None = None  # cm kept free around it; None: no zone
     meta: FurnitureMeta | None = None
 
 
