@@ -665,10 +665,7 @@ class PolygonTool(Tool):
     def press(self, pointer: Pointer) -> None:
         if not (self.host.editable and (self.draws_furniture or self.can_edit_rooms())):
             return
-        first_px = (
-            math.dist(pointer.pos, self.points[0]) / pointer.cm_per_px if self.points else None
-        )
-        if len(self.points) >= 3 and first_px is not None and first_px <= style.CLOSE_PX:
+        if self._closes(pointer):
             self.finish()
             return
         point = self.snapped(pointer)
@@ -687,7 +684,14 @@ class PolygonTool(Tool):
 
     def move(self, pointer: Pointer) -> None:
         if self.points:
-            self._show(self.snapped(pointer))
+            closing = self._closes(pointer)
+            self._show(self.points[0] if closing else self.snapped(pointer), closing=closing)
+
+    def _closes(self, pointer: Pointer) -> bool:
+        """True if a click here would close the outline: it's on the first corner."""
+        if len(self.points) < 3:
+            return False
+        return math.dist(pointer.pos, self.points[0]) / pointer.cm_per_px <= style.CLOSE_PX
 
     def key(self, key: int) -> bool:
         if not self.points:
@@ -722,16 +726,24 @@ class PolygonTool(Tool):
         self.points = []
         super().cancel()
 
-    def _show(self, cursor: XY | None) -> None:
+    def _show(self, cursor: XY | None, closing: bool = False) -> None:
+        """The outline so far and on to `cursor`; `closing`: the cursor is on the first
+        corner, so the outline is shown closed."""
         if cursor is None:
             self.host.plan.preview.clear()
             return
-        points = [*self.points, cursor] if cursor != self.points[-1] else list(self.points)
+        points = (
+            [*self.points, cursor]
+            if cursor != self.points[-1] and not closing
+            else list(self.points)
+        )
         if len(points) < 3:
             valid = True
         elif self.draws_furniture:
             valid = shape_problem([Point(x=x, y=y) for x, y in points]) is None
         else:
             valid = outline_problem(drawn_outline(points)) is None
-        labels = segment_labels(points, self.doc.settings.display_unit, closed=False)
-        self.host.plan.preview.show_outline(points, closed=False, valid=valid, labels=labels)
+        labels = segment_labels(points, self.doc.settings.display_unit, closed=closing)
+        self.host.plan.preview.show_outline(
+            points, closed=closing, valid=valid, labels=labels, start=(points[0], closing)
+        )

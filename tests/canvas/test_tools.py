@@ -2,6 +2,7 @@ import pytest
 from PySide6.QtCore import Qt
 from pytestqt.qtbot import QtBot
 
+from apartment_planner.canvas import style
 from apartment_planner.canvas.tools import Pointer, Tool
 from apartment_planner.canvas.view import PlanView
 from apartment_planner.model import ProjectDoc, Room, new_project
@@ -307,3 +308,19 @@ def test_a_double_click_with_too_few_corners_does_nothing(view: PlanView) -> Non
 
     assert view.state.doc.apartment.rooms == ()
     assert view.tool is view.tools["polygon"]
+
+
+def test_the_first_corner_is_marked_and_fills_when_a_click_would_close(view: PlanView) -> None:
+    view.set_tool("polygon")
+    for point in [(0, 0), (300, 0), (300, 200)]:
+        view.tool.press(at(*point))
+
+    view.tool.move(at(150, 250))
+    marker = view.plan.preview.start_marker
+    assert marker is not None and (marker.pos().x(), marker.pos().y()) == (0, 0)
+    assert marker.brush().color() == style.colours.handle_fill
+    view.tool.move(at(4, 6))  # within 10 px of the first corner
+
+    marker = view.plan.preview.start_marker
+    assert marker is not None and marker.brush().color() == style.colours.accent
+    assert view.plan.preview.label_texts == ["300 cm", "200 cm", "360.6 cm"]  # closed

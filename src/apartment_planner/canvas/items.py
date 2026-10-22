@@ -327,6 +327,7 @@ class PreviewItem(QGraphicsPathItem):
         self.setZValue(10)
         self.valid = True
         self._labels: list[TextLabel] = []
+        self.start_marker: HandleItem | None = None
 
     def show_outline(
         self,
@@ -335,8 +336,14 @@ class PreviewItem(QGraphicsPathItem):
         closed: bool,
         valid: bool,
         labels: Sequence[tuple[XY, str]] = (),
+        start: tuple[XY, bool] | None = None,
     ) -> None:
+        """`start`: a drawing's first corner, to click to close it, and whether the
+        pointer is on it (then it's filled in)."""
         self.show_outlines([points], closed=closed, valid=valid, labels=labels)
+        if start is not None:
+            point, active = start
+            self.start_marker = HandleItem(point, active, self)
 
     def show_outlines(
         self,
@@ -362,12 +369,21 @@ class PreviewItem(QGraphicsPathItem):
         self.setBrush(fill if closed else Qt.BrushStyle.NoBrush)
         self.setPath(path)
         self._set_labels(labels)
+        self._remove_start_marker()
         self.show()
 
     def clear(self) -> None:
         self.setPath(QPainterPath())
         self._set_labels(())
+        self._remove_start_marker()
         self.hide()
+
+    def _remove_start_marker(self) -> None:
+        if self.start_marker is not None:
+            scene = self.start_marker.scene()
+            if scene is not None:
+                scene.removeItem(self.start_marker)
+            self.start_marker = None
 
     @property
     def label_texts(self) -> list[str]:
