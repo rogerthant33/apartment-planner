@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 
 from apartment_planner.canvas import style
 from apartment_planner.canvas.scene import PlanScene
+from apartment_planner.geometry.constants import MIN_EDGE_LENGTH
 from apartment_planner.geometry.handles import Handle, handle_positions, resized, rotation_towards
 from apartment_planner.geometry.hits import (
     edge_at,
@@ -133,6 +134,7 @@ def segment_labels(points: Sequence[XY], unit: Unit, closed: bool) -> list[tuple
 class Tool:
     cursor = Qt.CursorShape.ArrowCursor
     needs_apartment = False  # True: it edits the apartment, so it needs it unlocked
+    hint = ""  # how to use it, shown when it's picked
 
     def __init__(self, host: Host) -> None:
         self.host = host
@@ -147,6 +149,9 @@ class Tool:
         pass
 
     def double_click(self, pointer: Pointer) -> None:
+        pass
+
+    def right_click(self, pointer: Pointer) -> None:
         pass
 
     def key(self, key: int) -> bool:
@@ -646,6 +651,10 @@ class PolygonTool(Tool):
     """
 
     cursor = Qt.CursorShape.CrossCursor
+    hint = (
+        "Click each corner. To finish, click the first corner again, double-click or press "
+        "Enter. Right-click or Backspace removes the last corner; Escape cancels."
+    )
 
     def __init__(self, host: Host, *, furniture: bool) -> None:
         super().__init__(host)
@@ -662,8 +671,19 @@ class PolygonTool(Tool):
         if len(self.points) >= 3 and first_px is not None and first_px <= style.CLOSE_PX:
             self.finish()
             return
-        self.points.append(self.snapped(pointer))
-        self._show(self.points[-1])
+        point = self.snapped(pointer)
+        if self.points and math.dist(point, self.points[-1]) < MIN_EDGE_LENGTH:
+            return  # the same corner again (e.g. snapped to it): no zero-length edge
+        self.points.append(point)
+        self._show(point)
+
+    def double_click(self, pointer: Pointer) -> None:
+        """Finish, with the corner the double-click's first click added."""
+        if len(self.points) >= 3:
+            self.finish()
+
+    def right_click(self, pointer: Pointer) -> None:
+        self.key(Qt.Key.Key_Backspace)
 
     def move(self, pointer: Pointer) -> None:
         if self.points:

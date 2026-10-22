@@ -634,8 +634,8 @@ class MainWindow(QMainWindow):
         for name, text, key, tip in (
             ("select", "Select", "V", "Select and move things (V)"),
             ("rect", "Rectangle Room", "M", "Drag out a rectangular room (M)"),
-            ("polygon", "Polygon Room", "P", "Click a room's corners, then Enter (P)"),
-            ("shape", "Custom Shape", None, "Click a furniture shape's corners, then Enter"),
+            ("polygon", "Custom Shape", "P", "Draw a room of any shape: click its corners (P)"),
+            ("shape", "Custom Shape", None, "Draw furniture of any shape: click its corners"),
             ("door", "Door", "D", "Click a wall to add a door (D)"),
             ("window", "Window", "W", "Click a wall to add a window (W)"),
             ("opening", "Opening", "O", "Click a wall to add an opening without a door (O)"),

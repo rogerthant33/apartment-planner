@@ -209,6 +209,8 @@ class PlanView(QGraphicsView):
         self.tool.cancel()
         self.tool = self.tools[name]
         self.viewport().setCursor(self.tool.cursor)
+        if self.tool.hint:
+            self.notify(self.tool.hint)
         self.tool_changed.emit(name)
 
     def finished(self) -> None:
@@ -283,6 +285,8 @@ class PlanView(QGraphicsView):
             self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
         elif button == Qt.MouseButton.LeftButton and self._state is not None:
             self.tool.press(self._pointer(event))
+        elif button == Qt.MouseButton.RightButton and self._state is not None:
+            self.tool.right_click(self._pointer(event))
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._pan_from is not None:

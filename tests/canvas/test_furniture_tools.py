@@ -2,7 +2,7 @@ import pytest
 from PySide6.QtCore import Qt
 from pytestqt.qtbot import QtBot
 
-from apartment_planner.canvas.tools import Pointer
+from apartment_planner.canvas.tools import Pointer, PolygonTool
 from apartment_planner.canvas.view import PlanView
 from apartment_planner.model import EllipseShape, PolygonShape, ProjectDoc, RectShape, new_project
 from apartment_planner.state.editor import EditorState
@@ -162,7 +162,7 @@ def test_polygon_corner_drags_and_refuses_crossing_outlines(
     shape = furniture_item(view.state.doc, shape_id).shape
     assert isinstance(shape, PolygonShape)
     assert [(p.x, p.y) for p in shape.points] == [(-40, -20), (40, -20), (40, 50)]
-    assert messages == ["The shape has no area."]
+    assert messages == [PolygonTool.hint, "The shape has no area."]
 
 
 def test_hidden_furniture_is_not_drawn_or_selectable(view: PlanView) -> None:
