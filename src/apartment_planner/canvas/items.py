@@ -28,8 +28,10 @@ from PySide6.QtWidgets import (
 )
 
 from apartment_planner.canvas import style
+from apartment_planner.fit.findings import Severity
 from apartment_planner.geometry.openings import door_swing, edge, inward_normal, opening_span
-from apartment_planner.geometry.shapes import room_polygon
+from apartment_planner.geometry.readouts import Segment
+from apartment_planner.geometry.shapes import placed_polygon, room_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import (
     EllipseShape,
@@ -43,6 +45,13 @@ from apartment_planner.model import (
     Shape,
 )
 from apartment_planner.state.units import Unit, format_area, format_length
+
+
+def flag_color(flag: Severity | None, default: QColor) -> QColor:
+    """Collisions are red and warnings amber (docs/SPEC.md §7)."""
+    if flag is None:
+        return default
+    return style.INVALID if flag == "collision" else style.WARNING
 
 
 def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
@@ -113,10 +122,12 @@ class RoomItem(QGraphicsPolygonItem):
         selected: bool,
         handles: bool,
         selected_vertex: str | None = None,
+        flag: Severity | None = None,
     ) -> None:
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
-        outline = style.ACCENT if selected else style.ROOM_OUTLINE
+        self.flag = flag
+        outline = style.ACCENT if selected else flag_color(flag, style.ROOM_OUTLINE)
         self.setPen(cosmetic_pen(outline, style.OUTLINE_PX))
         self.setBrush(QBrush(QColor(room.color) if room.color else style.ROOM_FILL))
 
@@ -174,15 +185,19 @@ class PlacedItem(QGraphicsPathItem):
     Obstacles are hatched and drawn under the furniture.
     """
 
-    def __init__(self, item: Placed, unit: Unit, *, selected: bool) -> None:
+    def __init__(
+        self, item: Placed, unit: Unit, *, selected: bool, flag: Severity | None = None
+    ) -> None:
         super().__init__(shape_path(item.shape))
         self.item_id = item.id
+        self.flag = flag
         self.setPos(item.x, item.y)
         self.setRotation(item.rotation)
         locked = isinstance(item, FurnitureItem) and item.locked
         obstacle = isinstance(item, Obstacle)
-        outline = style.ACCENT if selected else style.FURNITURE_OUTLINE
-        self.setPen(cosmetic_pen(outline, 1.5, dashed=locked))
+        outline = style.ACCENT if selected else flag_color(flag, style.FURNITURE_OUTLINE)
+        width = 1.5 if flag is None else 2.5
+        self.setPen(cosmetic_pen(outline, width, dashed=locked))
         if obstacle:
             self.setBrush(
                 QBrush(QColor(item.color or style.OBSTACLE_HATCH), Qt.BrushStyle.BDiagPattern)
@@ -198,6 +213,33 @@ class PlacedItem(QGraphicsPathItem):
                 label = TextLabel(format_length(math.dist(a, b), unit), self)
                 label.setPos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
                 self.edge_labels.append(label)
+
+
+class ClearanceItem(QGraphicsPathItem):
+    """The space an item wants kept free around it, drawn translucent behind it."""
+
+    def __init__(self, item: FurnitureItem) -> None:
+        super().__init__()
+        assert item.clearance is not None
+        zone = placed_polygon(item).buffer(item.clearance)
+        path = QPainterPath()
+        path.addPolygon(QPolygonF([QPointF(x, y) for x, y in zone.exterior.coords]))
+        self.setPath(path)
+        self.setPen(Qt.PenStyle.NoPen)
+        self.setBrush(style.CLEARANCE_FILL)
+        self.setZValue(0.3)
+
+
+class ReadoutItem(QGraphicsLineItem):
+    """A measured distance: a dashed line with its length in the middle."""
+
+    def __init__(self, segment: Segment, text: str) -> None:
+        (ax, ay), (bx, by) = segment
+        super().__init__(ax, ay, bx, by)
+        self.setPen(cosmetic_pen(style.ACCENT, 1.0, dashed=True))
+        self.setZValue(9)
+        self.label = TextLabel(text, self)
+        self.label.setPos((ax + bx) / 2, (ay + by) / 2)
 
 
 class OpeningItem(QGraphicsPathItem):

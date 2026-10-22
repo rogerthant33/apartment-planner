@@ -28,8 +28,9 @@ from apartment_planner.canvas.tools import (
     SelectTool,
     Tool,
 )
+from apartment_planner.fit.findings import Finding, check_fit
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
-from apartment_planner.model import FurnitureItem
+from apartment_planner.model import FurnitureItem, ProjectDoc
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import delete_openings, selected_openings
@@ -58,6 +59,7 @@ class PlanView(QGraphicsView):
         self._state: EditorState | None = None
         self.editable = False
         self.hidden: frozenset[str] = frozenset()  # furniture hidden from view, not saved
+        self._checked: tuple[ProjectDoc | None, list[Finding]] = (None, [])  # doc, findings
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
@@ -140,7 +142,19 @@ class PlanView(QGraphicsView):
                 editable=self.editable,
                 hidden=self.hidden,
                 rotate_offset=style.ROTATE_PX / self.zoom,
+                findings=self.findings,
             )
+
+    @property
+    def findings(self) -> list[Finding]:
+        """Fit-check findings for the active layout, recomputed when the document changes."""
+        if self._state is None:
+            return []
+        doc = self._state.doc
+        if doc is not self._checked[0]:
+            depth = doc.settings.default_clearance
+            self._checked = (doc, check_fit(doc.apartment, doc.active_layout, depth))
+        return self._checked[1]
 
     def set_tool(self, name: str) -> None:
         self.tool.cancel()
