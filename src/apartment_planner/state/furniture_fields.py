@@ -82,9 +82,10 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
             if size is None:
                 raise EditError(f"{label}: this shape is sized by its corners.")
             length = parse_length(text, unit)
-            if length is None or length <= 0:
+            # parse_length never returns a negative, so `== 0` is the same as `<= 0`.
+            if length is None or length <= 0:  # pragma: no mutate
                 raise EditError(f"{label}: enter a length greater than 0, such as 120 or 1.2 m.")
-            width, depth = (length, size[1]) if key == "width" else (size[0], length)
+            width, depth = {"width": (length, size[1]), "depth": (size[0], length)}[key]
             return {"shape": with_box_size(item.shape, width, depth)}
         case "clearance":
             if not text:
@@ -93,9 +94,10 @@ def parse_field(item: Placed, key: str, text: str, unit: Unit) -> dict[str, Any]
             if length is None:
                 raise EditError(f"{label}: enter a length such as 60, or leave it empty.")
             return {"clearance": length}
+        case "price":
+            return {"meta": _meta(item, key, _price(text, label))}
         case _:
-            assert isinstance(item, FurnitureItem)
-            return {"meta": _meta(item, key, text, label)}
+            return {"meta": _meta(item, key, text or None)}
 
 
 def _coordinate(text: str, unit: Unit, label: str) -> float:
@@ -106,14 +108,19 @@ def _coordinate(text: str, unit: Unit, label: str) -> float:
     return -length if negative else length
 
 
-def _meta(item: FurnitureItem, key: str, text: str, label: str) -> FurnitureMeta | None:
-    value: str | float | None = text or None
-    if key == "price" and text:
-        try:
-            value = float(text.replace(",", "."))
-        except ValueError:
-            raise EditError(f"{label}: enter an amount such as 499, or leave it empty.") from None
-        if value < 0:
-            raise EditError(f"{label}: enter an amount of 0 or more.")
+def _price(text: str, label: str) -> float | None:
+    if not text:
+        return None
+    try:
+        price = float(text.replace(",", "."))
+    except ValueError:
+        raise EditError(f"{label}: enter an amount such as 499, or leave it empty.") from None
+    if price < 0:
+        raise EditError(f"{label}: enter an amount of 0 or more.")
+    return price
+
+
+def _meta(item: Placed, key: str, value: str | float | None) -> FurnitureMeta | None:
+    assert isinstance(item, FurnitureItem)
     meta = (item.meta or FurnitureMeta()).evolve(**{key: value})
     return None if meta == FurnitureMeta() else meta
