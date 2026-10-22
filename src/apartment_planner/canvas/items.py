@@ -96,7 +96,7 @@ class TextLabel(QGraphicsItem):
         widget: QWidget | None = None,
     ) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 255, 255, 170))
+        painter.setBrush(style.LABEL_BACKGROUND)
         painter.drawRoundedRect(self._rect, 2, 2)
         painter.setFont(self._font)
         painter.setPen(style.LABEL)
@@ -112,7 +112,7 @@ class HandleItem(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
         self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(style.ACCENT if selected else QColor("white"))
+        self.setBrush(style.ACCENT if selected else style.HANDLE_FILL)
         self.setZValue(2)
 
 
@@ -165,7 +165,7 @@ class RotateHandleItem(QGraphicsEllipseItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setPos(*point)
         self.setPen(cosmetic_pen(style.ACCENT, 1.5))
-        self.setBrush(QColor("white"))
+        self.setBrush(style.HANDLE_FILL)
         self.setZValue(3)
 
 

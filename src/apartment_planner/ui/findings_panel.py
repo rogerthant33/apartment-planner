@@ -41,9 +41,15 @@ class FindingsPanel(QWidget):
         for finding in findings:
             row = QListWidgetItem(f"{PREFIX[finding.severity]}: {finding.message}")
             color = style.INVALID if finding.severity == "collision" else style.WARNING
-            row.setForeground(QBrush(color.darker(130)))
+            row.setForeground(QBrush(color if style.is_dark() else color.darker(130)))
             row.setData(IDS, finding.ids)
             self.list.addItem(row)
+
+    def restyle(self) -> None:
+        """Redraw the rows in the current theme's colours."""
+        shown, self._shown = self._shown, None
+        if shown is not None:
+            self.show_findings(shown)
 
     def _clicked(self, row: QListWidgetItem) -> None:
         self.finding_activated.emit(tuple(row.data(IDS)))

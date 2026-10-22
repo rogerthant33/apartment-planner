@@ -51,8 +51,9 @@ Desktop-first main window with three columns.
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
   tools, "add to the apartment" tools and obstacle templates (enabled while
   the apartment is unlocked), "add furniture" templates (table, round table,
-  L-shaped corner sofa, placed at the centre of the view), the room list and
-  the furniture list.
+  L-shaped corner sofa, placed at the centre of the view) and the custom shape
+  tool, the room list and the furniture list. Drawing and placing tools go back
+  to the select tool once they've made their room, shape or opening.
   Unticking an item in the furniture list hides it from the canvas for this
   session only; hidden items can't be selected.
 - **Canvas:** grid, rooms, openings, obstacles, furniture, dimension labels and
@@ -60,11 +61,17 @@ Desktop-first main window with three columns.
 - **Right panel:** properties of the selection (numeric dimensions, position,
   rotation, label, color, notes, metadata), actions (duplicate, delete, lock,
   group), and the warnings list for the current layout.
-- **Toolbar:** undo/redo, "Apartment locked" toggle, export plan. The **status
-  bar** shows save status: Saving… (while a save is waiting or running) /
-  Saved / Save failed — retrying / Read-only.
+- **Toolbar:** undo/redo, a padlock "Lock apartment" toggle (its icon shows
+  locked or unlocked; hovering explains it), a zoom-to-fit icon, export plan,
+  and a dark-mode toggle at the far end. The **status bar** shows save status:
+  Saving… (while a save is waiting or running) / Saved / Save failed —
+  retrying / Read-only.
 - **Menus:** File (New, Open…, Open Recent, Save Now, Save a Copy As…,
-  Rename…, Show in Folder, Export Plan…, Close, Quit), Edit, View, Help.
+  Rename…, Show in Folder, Import Image…, Export Plan…, Close, Quit), Edit
+  (only what has no button elsewhere: Select All Furniture, Rotate 90° either
+  way) and Help. Everything else is a button or panel control; its keyboard
+  shortcut works without a menu entry. Zoom is Ctrl + wheel or Ctrl +/−;
+  snapping is a project setting.
 
 ### Start screen
 
@@ -202,9 +209,10 @@ get group, ungroup, lock, unlock, duplicate and delete.
 
 ### Custom polygon drawing
 
-The polygon tool (P) draws a room while the apartment is unlocked and a
-custom furniture shape while it is locked. Click points; close on the first
-point or with Enter; Escape cancels. Show edge lengths while drawing and
+Two tools draw polygons the same way: Polygon Room (P, only while the
+apartment is unlocked) and Custom Shape (in "Add furniture", any time), which
+makes a piece of furniture. Click points; close on the first point or with
+Enter; Escape cancels. Show edge lengths while drawing and
 after creation. Edit vertices by dragging or numerically. Validated like
 rooms (either winding is fine). The shape's origin is the centre of its
 bounding box.
@@ -227,7 +235,7 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | Space + drag, middle-drag | Pan |
 | Ctrl + wheel, pinch | Zoom at the cursor |
 | 0 | Zoom to fit |
-| V, M, P | Select tool, rectangle room tool, polygon tool |
+| V, M, P | Select tool, rectangle room tool, polygon room tool |
 | D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |
@@ -530,13 +538,17 @@ through the current loader. Breaking a fixture is a failing test.
 
 ## 13. Visual design
 
-A clean technical drawing using the Qt Fusion style with a forced light
-palette: light neutral background, subtle grid (minor and major lines), dark
-room outlines, soft room fills, furniture in muted fills with darker outlines.
-Doors and windows each have a distinct conventional symbol. Selection is a thin
-accent outline with small square handles. Red is reserved for collisions and
-amber for warnings. Precision and legibility come before decoration. Light
-theme only for the MVP.
+A clean technical drawing using the Qt Fusion style with the app's own light
+or dark palette: neutral background, subtle grid (minor and major lines),
+contrasting room outlines, soft room fills, furniture in muted fills with
+outlines. Doors and windows each have a distinct conventional symbol.
+Selection is a thin accent outline with small square handles. Red is reserved
+for collisions and amber for warnings. Precision and legibility come before
+decoration.
+
+Dark mode is switched from the toolbar and remembered per computer (not per
+project). The first time, it follows the system's appearance. Exports are
+always drawn in the light colours.
 
 ## 14. Out of scope
 
@@ -546,7 +558,7 @@ recognition; curved furniture geometry; retailer integrations; multiple
 storeys; wall thickness and construction-grade validation; vertical clearance.
 
 **Parked for later:** Plan/Furnish modes, measuring tape tool, furniture preset
-library, dark theme, auto-update.
+library, auto-update.
 
 ## 15. Milestones
 

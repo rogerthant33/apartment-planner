@@ -137,6 +137,19 @@ def _draw(
     title: str,
     warnings: bool,
 ) -> None:
+    with style.light():  # paper is white, whatever the screen shows
+        _draw_plan(painter, doc, source, target, per_cm, title, warnings)
+
+
+def _draw_plan(
+    painter: QPainter,
+    doc: ProjectDoc,
+    source: QRectF,
+    target: QRectF,
+    per_cm: float,
+    title: str,
+    warnings: bool,
+) -> None:
     painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
     scene = PlanScene()
     findings = check_fit(doc.apartment, doc.active_layout, doc.settings.default_clearance)
