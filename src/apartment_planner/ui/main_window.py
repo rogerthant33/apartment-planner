@@ -40,6 +40,7 @@ from apartment_planner.state.units import parse_length
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.commands import Commands
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
+from apartment_planner.ui.export import ExportError, export_pdf, export_png
 from apartment_planner.ui.findings_panel import FindingsPanel
 from apartment_planner.ui.open_project import OpenProject, local_now
 from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
@@ -360,6 +361,36 @@ class MainWindow(QMainWindow):
         if self.editor is not None and not self.editor.doc.settings.apartment_locked:
             self.editor.select({room_id})
 
+    def export_plan(self) -> None:
+        project = self.project
+        if project is None:
+            return
+        choice = dialogs.ask_export(self)
+        if choice is None:
+            return
+        doc = project.doc
+        suggested = project.path.parent / f"{doc.name} - {doc.active_layout.name}.{choice.format}"
+        path = dialogs.save_export(self, suggested, choice.format)
+        if path is None:
+            return
+        try:
+            if choice.format == "png":
+                export_png(doc, path, choice.px_per_m, choice.warnings)
+                scale = None
+            else:
+                scale = export_pdf(doc, path, choice.pdf, choice.warnings)
+        except (OSError, ExportError) as error:
+            dialogs.show_error(self, "Export Plan", dialogs.error_message(error))
+            return
+        wanted = choice.pdf.scale
+        if choice.format == "pdf" and wanted is not None and scale is None:
+            self.view.notify(
+                f"Exported {path.name}. The plan doesn't fit on {choice.pdf.paper} at 1:{wanted}, "
+                "so it was fitted to the page; try A3 or 1:100 to print it to scale."
+            )
+        else:
+            self.view.notify(f"Exported {path.name}.")
+
     def import_background(self) -> None:
         project = self.project
         if project is None or not self.view.editable:
@@ -514,7 +545,12 @@ class MainWindow(QMainWindow):
         self.properties_panel.setVisible(project is not None)
         self.findings_panel.setVisible(project is not None)
         self.toolbar.setVisible(project is not None)
-        for action in (self.close_action, self.save_copy_action, self.show_in_folder_action):
+        for action in (
+            self.close_action,
+            self.save_copy_action,
+            self.show_in_folder_action,
+            self.export_action,
+        ):
             action.setEnabled(project is not None)
         for action in (self.save_action, self.rename_action):
             action.setEnabled(editable)
@@ -660,8 +696,7 @@ class MainWindow(QMainWindow):
         self.save_editable_copy_action = action("Save an Editable Copy…", self.save_editable_copy)
         self.rename_action = action("Rename…", self.rename_project)
         self.show_in_folder_action = action("Show in Folder", self.show_in_folder)
-        self.export_action = action("Export Plan…", lambda: None)
-        self.export_action.setEnabled(False)  # milestone 7
+        self.export_action = action("Export Plan…", self.export_plan, "Ctrl+E")
         self.close_action = action("Close", self.close_project, QKeySequence.StandardKey.Close)
         self.quit_action = action("Quit", self.close, QKeySequence.StandardKey.Quit)
         self.quit_action.setMenuRole(QAction.MenuRole.QuitRole)

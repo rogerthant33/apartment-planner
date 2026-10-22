@@ -231,6 +231,7 @@ Ctrl means Cmd on macOS. Use `QKeySequence.StandardKey` where one exists.
 | D, W, O | Door, window and opening tools |
 | Ctrl+S | Save now (flush autosave) |
 | Ctrl+N / Ctrl+O | New / Open |
+| Ctrl+E | Export plan |
 
 Shortcuts are ignored while a text field has focus.
 
@@ -363,6 +364,13 @@ to 10), the projects folder and window geometry are stored in `QSettings`.
 - **PDF:** the same rendering through `QPdfWriter`, A4 or A3, portrait or
   landscape, printed **to a stated scale** (1:50 or 1:100) when it fits,
   otherwise fit-to-page with the scale bar shown.
+- File → Export Plan… (Ctrl+E) asks for the format and its options, then
+  where to save (suggesting "<project> - <layout>" next to the project). The
+  drawing shows every room's edge lengths, 50 cm of space around the plan, a
+  title (with the scale when printed to scale) and a round-length scale bar;
+  no grid, selection or background image. To-scale PDFs are centred on the
+  page. If the plan doesn't fit at the chosen scale, the status bar says it
+  was fitted to the page instead.
 
 ## 10. Background floor-plan image
 
