@@ -147,13 +147,13 @@ def test_rotate_handle_snaps_to_15_degrees_unless_alt_is_held(view: PlanView) ->
 def test_polygon_corner_drags_and_refuses_crossing_outlines(
     view: PlanView, messages: list[str]
 ) -> None:
-    view.set_tool("polygon")  # draws furniture while the apartment is locked
+    view.set_tool("shape")
     for point in [(20, 20), (100, 20), (100, 60)]:
         view.tool.press(at(*point))
     assert view.plan.preview.label_texts == ["80 cm", "40 cm"]
     view.tool.key(Qt.Key.Key_Return)
     (shape_id,) = view.state.selection
-    view.set_tool("select")
+    assert view.tool is view.tools["select"]
 
     drag(view, (100, 60), (100, 90))
     drag(view, (20, 20), (100, 40))  # onto the line through the other two corners

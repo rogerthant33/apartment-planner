@@ -175,7 +175,9 @@ def test_polygon_keys_finish_undo_a_corner_and_cancel(view: PlanView) -> None:
     assert view.tool.key(Qt.Key.Key_Backspace)
     assert view.tool.key(Qt.Key.Key_Return)
     assert corners(view.state.doc.apartment.rooms[0]) == [(0, 0), (300, 0), (300, 200)]
+    assert view.tool is view.tools["select"]  # a finished room ends the tool
 
+    view.set_tool("polygon")
     view.tool.press(at(0, 400))
     assert view.tool.key(Qt.Key.Key_Escape)
     assert not view.tool.key(Qt.Key.Key_Return)  # nothing left to finish

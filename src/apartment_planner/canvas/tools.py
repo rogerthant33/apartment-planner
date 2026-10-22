@@ -99,6 +99,8 @@ class Host(Protocol):
     def notify(self, message: str) -> None: ...
     def background_size(self) -> tuple[int, int] | None: ...
     def ask_calibration(self, a: XY, b: XY) -> None: ...
+    def finished(self) -> None:
+        """A drawing tool made its thing: go back to the select tool."""
 
 
 def footprint(item: Placed) -> list[XY]:
@@ -459,6 +461,7 @@ class OpeningTool(Tool):
         doc, opening_id = place()
         self.cancel()
         self.commit(doc, select=frozenset({opening_id}))
+        self.host.finished()
 
 
 class BackgroundTool(Tool):
@@ -576,6 +579,7 @@ class RectRoomTool(Tool):
             self.host.notify(str(error))
             return
         self.commit(doc, select=frozenset({room_id}))
+        self.host.finished()
 
     def key(self, key: int) -> bool:
         if key == Qt.Key.Key_Escape and self._start is not None:
@@ -591,19 +595,16 @@ class RectRoomTool(Tool):
 class PolygonTool(Tool):
     """Click corners; close on the first corner or with Enter. Escape cancels.
 
-    Draws a room while the apartment is unlocked, and a custom furniture shape
-    while it is locked.
+    Draws a room (only while the apartment is unlocked) or a custom-shaped piece
+    of furniture.
     """
 
     cursor = Qt.CursorShape.CrossCursor
 
-    def __init__(self, host: Host) -> None:
+    def __init__(self, host: Host, *, furniture: bool) -> None:
         super().__init__(host)
+        self.draws_furniture = furniture
         self.points: list[XY] = []
-
-    @property
-    def draws_furniture(self) -> bool:
-        return self.doc.settings.apartment_locked
 
     def press(self, pointer: Pointer) -> None:
         if not (self.host.editable and (self.draws_furniture or self.can_edit_rooms())):
@@ -648,6 +649,7 @@ class PolygonTool(Tool):
             return
         self.cancel()
         self.commit(doc, select=frozenset({new_id}))
+        self.host.finished()
 
     def cancel(self) -> None:
         self.points = []

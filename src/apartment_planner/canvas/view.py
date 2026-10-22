@@ -51,6 +51,7 @@ EMPTY_PLAN = QRectF(0, 0, 600, 400)  # what "zoom to fit" shows without rooms
 class PlanView(QGraphicsView):
     message = Signal(str)  # something the user should know, e.g. why an edit was refused
     calibration_requested = Signal(tuple, tuple)  # two world points on the background
+    tool_changed = Signal(str)  # the name of the tool now in use
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -71,7 +72,8 @@ class PlanView(QGraphicsView):
         self.tools: dict[str, Tool] = {
             "select": SelectTool(self),
             "rect": RectRoomTool(self),
-            "polygon": PolygonTool(self),
+            "polygon": PolygonTool(self, furniture=False),
+            "shape": PolygonTool(self, furniture=True),
             "door": OpeningTool(self, "door"),
             "window": OpeningTool(self, "window"),
             "opening": OpeningTool(self, "opening"),
@@ -198,6 +200,10 @@ class PlanView(QGraphicsView):
         self.tool.cancel()
         self.tool = self.tools[name]
         self.viewport().setCursor(self.tool.cursor)
+        self.tool_changed.emit(name)
+
+    def finished(self) -> None:
+        self.set_tool("select")
 
     # Zoom and pan never touch the document: they only change the view transform.
 
