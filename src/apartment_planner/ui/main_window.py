@@ -1,12 +1,10 @@
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFrame,
-    QGraphicsScene,
-    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -17,17 +15,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from apartment_planner.canvas.view import PlanView
 from apartment_planner.persistence.errors import ProjectFileError
 from apartment_planner.persistence.library import Library, create_project, project_name
 from apartment_planner.persistence.session import ProjectSession
+from apartment_planner.state.editor import EditorState
+from apartment_planner.state.rooms import EditError, duplicate_room, selected_room
 from apartment_planner.ui import dialogs
 from apartment_planner.ui.dialogs import FailedSaveChoice, error_message
 from apartment_planner.ui.open_project import OpenProject, local_now
+from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
 from apartment_planner.ui.reveal import show_in_folder
 from apartment_planner.ui.start_screen import StartScreen
 
 APP_NAME = "Apartment Planner"
 GEOMETRY_KEY = "window/geometry"
+DUPLICATE_OFFSET = (50.0, 50.0)  # cm, so a duplicated room doesn't hide its original
+MESSAGE_MS = 8000
 
 
 class Banner(QFrame):
@@ -78,8 +82,8 @@ class MainWindow(QMainWindow):
         self.start_screen.browse_requested.connect(self.browse)
 
         self.banner = Banner()
-        self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
+        self.view = PlanView()
+        self.view.message.connect(lambda text: self.statusBar().showMessage(text, MESSAGE_MS))
         editor = QWidget()
         editor_layout = QVBoxLayout(editor)
         editor_layout.setContentsMargins(0, 0, 0, 0)
@@ -92,14 +96,20 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(editor)
         self.setCentralWidget(self.pages)
 
-        self.tools_panel = self._add_panel("Tools", Qt.DockWidgetArea.LeftDockWidgetArea)
-        self.properties_panel = self._add_panel("Properties", Qt.DockWidgetArea.RightDockWidgetArea)
-
         self.save_status = QLabel()
         self.statusBar().addPermanentWidget(self.save_status)
 
         self._create_actions()
+        self.tools = ToolsPanel(self.tool_actions.actions())
+        self.tools.room_activated.connect(self._select_room)
+        self.properties = PropertiesPanel()
+        self.properties.room_page.duplicate.clicked.connect(self.duplicate_selection)
+        self.properties.room_page.delete.clicked.connect(self.view.delete_selection)
+        left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
+        self.tools_panel = self._add_panel("Tools", left, self.tools)
+        self.properties_panel = self._add_panel("Properties", right, self.properties)
         self._create_menus()
+        self._create_toolbar()
         geometry = self.settings.value(GEOMETRY_KEY)
         if isinstance(geometry, QByteArray):
             self.restoreGeometry(geometry)
@@ -153,6 +163,7 @@ class MainWindow(QMainWindow):
         project.close()
         project.deleteLater()
         self.project = None
+        self.view.set_state(None, editable=False)
         self._show_start_screen()
         return True
 
@@ -199,6 +210,71 @@ class MainWindow(QMainWindow):
         if self.project is not None:
             show_in_folder(self.project.path)
 
+    # Editing
+
+    @property
+    def editor(self) -> EditorState | None:
+        return self.project.editor if self.project is not None else None
+
+    def set_tool(self, name: str) -> None:
+        self.view.set_tool(name)
+        self.tool_actions.actions()[list(self.view.tools).index(name)].setChecked(True)
+        self.view.setFocus()
+
+    def undo(self) -> None:
+        if self.editor is not None:
+            self.view.tool.cancel()
+            self.editor.undo()
+
+    def redo(self) -> None:
+        if self.editor is not None:
+            self.view.tool.cancel()
+            self.editor.redo()
+
+    def delete_pressed(self) -> None:
+        # While drawing a polygon, Backspace removes the last corner instead.
+        if self.editor is not None and not self.view.tool.key(Qt.Key.Key_Backspace):
+            self.view.delete_selection()
+
+    def cancel(self) -> None:
+        if self.editor is not None and not self.view.tool.key(Qt.Key.Key_Escape):
+            self.editor.select(())
+
+    def duplicate_selection(self) -> None:
+        state = self.editor
+        if state is None or not self.view.can_edit_rooms():
+            return
+        room = selected_room(state.doc, state.selection)
+        if room is None:
+            return
+        try:
+            doc, copy_id = duplicate_room(state.doc, room.id, DUPLICATE_OFFSET)
+        except EditError as error:
+            self.view.notify(str(error))
+            return
+        state.commit(doc)
+        state.select({copy_id})
+
+    def set_apartment_locked(self, locked: bool) -> None:
+        state = self.editor
+        if state is None or state.doc.settings.apartment_locked == locked:
+            return
+        settings = state.doc.settings.evolve(apartment_locked=locked)
+        state.update_untracked(state.doc.evolve(settings=settings))
+        if locked:
+            self.set_tool("select")
+            state.select(())
+
+    def set_snapping(self, enabled: bool) -> None:
+        state = self.editor
+        if state is not None and state.doc.settings.snap_enabled != enabled:
+            settings = state.doc.settings.evolve(snap_enabled=enabled)
+            state.update_untracked(state.doc.evolve(settings=settings))
+
+    def _select_room(self, room_id: str) -> None:
+        if self.editor is not None and not self.editor.doc.settings.apartment_locked:
+            self.editor.select({room_id})
+
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.close_project():
             event.ignore()
@@ -214,12 +290,17 @@ class MainWindow(QMainWindow):
         project.status_changed.connect(self._update_status)
         project.renamed.connect(self._project_renamed)
         project.conflict.connect(self._show_conflict)
+        project.signals.document_changed.connect(self._refresh_editor)
+        project.signals.selection_changed.connect(self._refresh_editor)
         self.library.add_recent(project.path)
         self.banner.hide()
         if project.read_only_reason is not None:
             self.banner.show_message(project.read_only_reason, self.save_editable_copy_action)
+        self.view.set_state(project.editor, editable=project.read_only_reason is None)
+        self.set_tool("select")
         self.pages.setCurrentIndex(1)
         self._update_window()
+        self.view.zoom_to_fit()
 
     def _show_start_screen(self) -> None:
         self.pages.setCurrentIndex(0)
@@ -240,15 +321,49 @@ class MainWindow(QMainWindow):
             "in that copy: compare the two and delete the one you don't need."
         )
 
+    def _refresh_editor(self) -> None:
+        state = self.editor
+        if state is None:
+            return
+        self.view.refresh()
+        self.tools.refresh(state.doc, state.selection)
+        self.properties.refresh(state, self.view.editable)
+        self._update_edit_actions()
+
+    def _update_edit_actions(self) -> None:
+        state = self.editor
+        editable = state is not None and self.view.editable
+        rooms = state is not None and self.view.can_edit_rooms()
+        has_room = state is not None and selected_room(state.doc, state.selection) is not None
+        self.undo_action.setEnabled(editable and state is not None and state.can_undo)
+        self.redo_action.setEnabled(editable and state is not None and state.can_redo)
+        for action in (self.rect_tool_action, self.polygon_tool_action):
+            action.setEnabled(rooms)
+        for action in (self.delete_action, self.duplicate_action):
+            action.setEnabled(rooms and has_room)
+        self.lock_action.setEnabled(editable)
+        self.snap_action.setEnabled(editable)
+        for action in (self.lock_action, self.snap_action):
+            action.blockSignals(True)
+        self.lock_action.setChecked(state is not None and state.doc.settings.apartment_locked)
+        self.snap_action.setChecked(state is not None and state.doc.settings.snap_enabled)
+        for action in (self.lock_action, self.snap_action):
+            action.blockSignals(False)
+        for action in (self.zoom_in_action, self.zoom_out_action, self.zoom_fit_action):
+            action.setEnabled(state is not None)
+
     def _update_window(self) -> None:
         project = self.project
         editable = project is not None and project.read_only_reason is None
         self.tools_panel.setVisible(project is not None)
         self.properties_panel.setVisible(project is not None)
+        self.toolbar.setVisible(project is not None)
         for action in (self.close_action, self.save_copy_action, self.show_in_folder_action):
             action.setEnabled(project is not None)
         for action in (self.save_action, self.rename_action):
             action.setEnabled(editable)
+        self._refresh_editor()
+        self._update_edit_actions()
         if project is None:
             self.setWindowTitle(APP_NAME)
         else:
@@ -265,13 +380,55 @@ class MainWindow(QMainWindow):
 
     def _create_actions(self) -> None:
         def action(
-            text: str, slot: object, shortcut: QKeySequence.StandardKey | None = None
+            text: str, slot: object, shortcut: QKeySequence.StandardKey | str | None = None
         ) -> QAction:
             created = QAction(text, self)
             created.triggered.connect(slot)
             if shortcut is not None:
                 created.setShortcut(shortcut)
             return created
+
+        self.undo_action = action("Undo", self.undo, QKeySequence.StandardKey.Undo)
+        self.redo_action = action("Redo", self.redo)
+        redo_keys = [
+            *QKeySequence.keyBindings(QKeySequence.StandardKey.Redo),
+            QKeySequence("Ctrl+Y"),
+        ]
+        self.redo_action.setShortcuts(list(dict.fromkeys(redo_keys)))
+        self.delete_action = action("Delete", self.delete_pressed)
+        self.delete_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Backspace")])
+        self.duplicate_action = action("Duplicate", self.duplicate_selection, "Ctrl+D")
+        self.cancel_action = action("Cancel", self.cancel, "Escape")
+        self.addAction(self.cancel_action)  # a shortcut only, not in a menu
+
+        self.tool_actions = QActionGroup(self)
+        for name, text, key in (
+            ("select", "Select", "V"),
+            ("rect", "Rectangle Room", "M"),
+            ("polygon", "Polygon Room", "P"),
+        ):
+            tool = action(text, lambda _=False, n=name: self.set_tool(n), key)
+            tool.setCheckable(True)
+            tool.setToolTip(f"{text} ({key})")
+            self.tool_actions.addAction(tool)
+        self.select_tool_action, self.rect_tool_action, self.polygon_tool_action = (
+            self.tool_actions.actions()
+        )
+        self.lock_action = QAction("Apartment Locked", self)
+        self.lock_action.setCheckable(True)
+        self.lock_action.setToolTip("While locked, rooms can't be selected or changed")
+        self.lock_action.toggled.connect(self.set_apartment_locked)
+        self.snap_action = QAction("Snap to Grid and Rooms", self)
+        self.snap_action.setCheckable(True)
+        self.snap_action.setToolTip("Hold Alt while dragging to suspend snapping")
+        self.snap_action.toggled.connect(self.set_snapping)
+        self.zoom_in_action = action(
+            "Zoom In", lambda: self.view.zoom_by(1.25), QKeySequence.StandardKey.ZoomIn
+        )
+        self.zoom_out_action = action(
+            "Zoom Out", lambda: self.view.zoom_by(0.8), QKeySequence.StandardKey.ZoomOut
+        )
+        self.zoom_fit_action = action("Zoom to Fit", self.view.zoom_to_fit, "0")
 
         self.new_action = action("New…", self.new_project, QKeySequence.StandardKey.New)
         self.open_action = action("Open…", self.browse, QKeySequence.StandardKey.Open)
@@ -300,6 +457,16 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.export_action)
         file_menu.addSeparator()
         file_menu.addActions([self.close_action, self.quit_action])
+        edit_menu = self.menuBar().addMenu("&Edit")
+        edit_menu.addActions([self.undo_action, self.redo_action])
+        edit_menu.addSeparator()
+        edit_menu.addActions([self.duplicate_action, self.delete_action])
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.lock_action)
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addActions([self.zoom_in_action, self.zoom_out_action, self.zoom_fit_action])
+        view_menu.addSeparator()
+        view_menu.addAction(self.snap_action)
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(self.about_action)
 
@@ -320,13 +487,19 @@ class MainWindow(QMainWindow):
             f"{APP_NAME}\n\nPlan your apartment with real measurements and try furniture layouts.",
         )
 
-    def _add_panel(self, title: str, area: Qt.DockWidgetArea) -> QDockWidget:
+    def _create_toolbar(self) -> None:
+        self.toolbar = self.addToolBar("Main")
+        self.toolbar.setObjectName("main_toolbar")
+        self.toolbar.setMovable(False)
+        self.toolbar.addActions([self.undo_action, self.redo_action])
+        self.toolbar.addSeparator()
+        self.toolbar.addActions([self.lock_action, self.export_action])
+
+    def _add_panel(self, title: str, area: Qt.DockWidgetArea, widget: QWidget) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setObjectName(f"{title.lower()}_panel")
         dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         dock.setMinimumWidth(240)
-        placeholder = QLabel("Nothing here yet.", dock)
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        dock.setWidget(placeholder)
+        dock.setWidget(widget)
         self.addDockWidget(area, dock)
         return dock

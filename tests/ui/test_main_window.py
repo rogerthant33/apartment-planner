@@ -30,6 +30,11 @@ def open_project(window: MainWindow) -> OpenProject:
     return window.project
 
 
+def edit(project: OpenProject) -> None:
+    doc = project.doc
+    project.editor.commit(doc.evolve(layouts=(doc.layouts[0].evolve(name="Edited"),)))
+
+
 def test_starts_on_the_start_screen(window: MainWindow) -> None:
     assert window.pages.currentWidget() is window.start_screen
     assert window.windowTitle() == APP_NAME
@@ -56,7 +61,9 @@ def test_save_now_writes_the_latest_document(window: MainWindow, folder: Path) -
     path = write_project(folder / "Flat.apartment")
     window.open_path(path)
     project = open_project(window)
-    project.update(project.doc.evolve(settings=project.doc.settings.evolve(grid_size=25)))
+    project.editor.update_untracked(
+        project.doc.evolve(settings=project.doc.settings.evolve(grid_size=25))
+    )
     assert window.save_status.text() == "Saving…"
 
     window.save_action.trigger()
@@ -98,7 +105,7 @@ def test_closing_while_saves_fail_asks_what_to_do(
         return next(choices)
 
     monkeypatch.setattr(dialogs, "ask_failed_save", ask)
-    project.update(project.doc.evolve(name="Changed"))
+    edit(project)
 
     assert not window.close_project()
     assert window.project is project
@@ -118,7 +125,7 @@ def test_conflicting_save_continues_in_a_copy_and_explains(
     project = open_project(window)
     path.write_bytes(encode(ProjectFile(new_project("Theirs"))))
 
-    project.update(project.doc.evolve(name="Mine"))
+    edit(project)
     window.save_now()
 
     assert "changed by someone else" in window.banner.label.text()
