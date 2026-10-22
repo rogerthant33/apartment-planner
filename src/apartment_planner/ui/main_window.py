@@ -752,11 +752,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.export_action)
         file_menu.addSeparator()
         file_menu.addActions([self.close_action, self.quit_action])
-        # Only what has no button elsewhere; the rest are shortcuts on the window.
-        edit_menu = self.menuBar().addMenu("&Edit")
-        edit_menu.addActions([self.select_all_action, self.rotate_action, self.rotate_back_action])
+        # Editing is done with buttons and panels; these keep their keyboard shortcuts.
         self.addActions(
             [
+                self.select_all_action,
+                self.rotate_action,
+                self.rotate_back_action,
                 self.delete_action,
                 self.duplicate_action,
                 self.group_action,

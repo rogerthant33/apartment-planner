@@ -168,19 +168,23 @@ class FurniturePage(QWidget):
         self._commit(lambda doc: update_placed(doc, item.id, **parse_field(item, key, text, unit)))
 
     def _turn_buttons(self) -> QWidget:
-        """Turn the item anticlockwise or clockwise by ROTATE_STEP."""
+        """Turn the item anticlockwise or clockwise, by ROTATE_STEP (hold to keep
+        turning) or a quarter turn (also R and Shift+R)."""
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         self.turn_buttons: dict[str, QToolButton] = {}
-        for name, text, step in (
-            ("anticlockwise", f"↺ {ROTATE_STEP:g}°", -ROTATE_STEP),
-            ("clockwise", f"↻ {ROTATE_STEP:g}°", ROTATE_STEP),
+        for name, step, key in (
+            ("anticlockwise 90", -90.0, " (Shift+R)"),
+            ("anticlockwise", -ROTATE_STEP, ""),
+            ("clockwise", ROTATE_STEP, ""),
+            ("clockwise 90", 90.0, " (R)"),
         ):
+            arrow = "↺" if step < 0 else "↻"
             button = QToolButton()
-            button.setText(text)
-            button.setToolTip(f"Turn {ROTATE_STEP:g}° {name}")
-            button.setAutoRepeat(True)  # hold it down to keep turning
+            button.setText(f"{arrow} {abs(step):g}°")
+            button.setToolTip(f"Turn {abs(step):g}° {name.split()[0]}{key}")
+            button.setAutoRepeat(not key)  # small steps: hold it down to keep turning
             button.clicked.connect(lambda _=False, step=step: self._turn(step))
             layout.addWidget(button)
             self.turn_buttons[name] = button

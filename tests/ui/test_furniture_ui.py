@@ -156,6 +156,7 @@ def test_fit_checks_panel_lists_findings_and_selects_their_items(window: MainWin
 
 
 def test_shortcuts_work_without_menu_entries(window: MainWindow) -> None:
+    assert [menu.text() for menu in window.menuBar().actions()] == ["&File", "&Help"]
     first = add_table(window)
     add_table(window)
     window.view.setFocus()
@@ -199,3 +200,9 @@ def test_turn_buttons_rotate_either_way_and_update_the_field(window: MainWindow)
 
     assert furniture(window)[-1].rotation == 15
     assert page.fields["rotation"].text() == "15°"
+    page.turn_buttons["clockwise 90"].click()
+    page.turn_buttons["anticlockwise 90"].click()
+    page.turn_buttons["anticlockwise 90"].click()
+    assert page.fields["rotation"].text() == "285°"
+    assert page.turn_buttons["clockwise 90"].toolTip() == "Turn 90° clockwise (R)"
+    assert page.turn_buttons["anticlockwise 90"].toolTip() == "Turn 90° anticlockwise (Shift+R)"
