@@ -4,6 +4,7 @@ import math
 import re
 from typing import Literal
 
+from apartment_planner.geometry.transform import XY
 from apartment_planner.state.errors import EditError
 
 Unit = Literal["mm", "cm", "m"]
@@ -45,7 +46,7 @@ def format_area(cm2: float) -> str:
     return f"{cm2 / 10_000:.2f} m²"
 
 
-def describe_distance(a: tuple[float, float], b: tuple[float, float], unit: Unit) -> str:
+def describe_distance(a: XY, b: XY, unit: Unit) -> str:
     """The distance from `a` to `b`, with its horizontal and vertical parts when it's
     on a slant: "250 cm (200 cm horizontal, 150 cm vertical)"."""
     dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])

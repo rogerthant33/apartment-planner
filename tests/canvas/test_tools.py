@@ -353,3 +353,17 @@ def test_measuring_by_two_clicks_and_clearing_it(view: PlanView, messages: list[
     view.tool.key(Qt.Key.Key_Escape)
 
     assert view.plan.preview.label_texts == []
+
+
+def test_measuring_ignores_a_point_on_top_of_the_first(view: PlanView, messages: list[str]) -> None:
+    with_rooms(view, SQUARE)
+    view.set_tool("measure")
+
+    drag(view.tool, (3, 8), (8, 3))  # a drag that snaps back onto its start: nothing
+    assert view.plan.preview.label_texts == []
+    drag(view.tool, (100, 100), snapping=False)
+    drag(view.tool, (103.9, 100), snapping=False)  # 3.9 px from the first click: ignored
+    assert messages[-1] == view.tool.hint
+    drag(view.tool, (104, 100), snapping=False)  # 4 px: a second point
+
+    assert messages[-1] == "Distance: 4 cm"

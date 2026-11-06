@@ -55,7 +55,7 @@ class PlanScene(QGraphicsScene):
         if self.background is not None:
             self.removeItem(self.background)
             self.background = None
-        self.preview.clear()
+        # The preview is the active tool's, not the document's: it survives redraws.
 
     def sync(
         self,
