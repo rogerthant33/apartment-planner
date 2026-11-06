@@ -51,7 +51,7 @@ Desktop-first main window with three columns.
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
   "Add room" (rectangle and custom-shape room tools) and "Add to the
   apartment" (door, window, opening and obstacle templates), both enabled while
-  the apartment is unlocked, "add furniture" templates (table, round table,
+  the apartment is unlocked, "add furniture" templates (rectangle, round table,
   L-shaped corner sofa, placed at the centre of the view) and the custom shape
   tool, the room list and the furniture list. Drawing and placing tools go back
   to the select tool once they've made their room, shape or opening.
@@ -218,7 +218,7 @@ origin), `rotation`, `color?`, `notes?`, `room_id?`, `locked`, `group_id?`,
 (`product`, `url`, `price`).
 
 `room_id` is kept up to date automatically: it names the room the item's
-origin stands in. New items get numbered names ("Table", "Table 2", …). The
+origin stands in. New items get numbered names ("Rectangle", "Rectangle 2", …). The
 properties panel edits every field of a single item (width and depth for
 rectangles and ellipses, edge lengths for polygons); several selected items
 get group, ungroup, lock, unlock, duplicate and delete. The fill colour is
@@ -236,6 +236,13 @@ product details. Hovering over Clearance explains it.
   under the Rotation field: 15° a click (hold to keep turning), or 90° (their
   tooltips name the R / Shift+R shortcuts). A single item
   turns about its origin; several turn about the centre of their footprints.
+- Rename in place: with the Select tool, double-clicking a room's or a piece of
+  furniture's name label on the plan (the label's text, not the rest of the
+  shape) opens a text box over it with the name selected. Enter or clicking
+  elsewhere renames it (one undo step); Escape cancels. Name labels say
+  "Double-click to rename" on hover. Rooms and obstacles need the apartment
+  unlocked (otherwise a message says so); furniture, even locked, can be
+  renamed. The properties panel's Name field does the same.
 - Duplicate (copies are unlocked and offset by 50 cm; copies of a group form a
   new group), delete, rename, group/ungroup (groups select and move together;
   a group with fewer than two members dissolves), lock (a locked item can't be

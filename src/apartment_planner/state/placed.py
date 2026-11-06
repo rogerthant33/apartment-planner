@@ -11,6 +11,7 @@ from typing import Any
 from apartment_planner.geometry.transform import XY, rotate
 from apartment_planner.model import Obstacle, Placed, ProjectDoc, Shape, new_id
 from apartment_planner.state import furniture
+from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import footprint_centre
 
 
@@ -56,6 +57,14 @@ def update_placed(doc: ProjectDoc, item_id: str, **changes: Any) -> ProjectDoc:
     if not is_obstacle(doc, item_id):
         return furniture.update_furniture(doc, item_id, **changes)
     return _replace(doc, {item_id: obstacle(doc, item_id).evolve(**changes)})
+
+
+def rename_placed(doc: ProjectDoc, item_id: str, name: str) -> ProjectDoc:
+    """Rename furniture or an obstacle; locked furniture too."""
+    name = name.strip()
+    if not name:
+        raise EditError("Enter a name.")
+    return update_placed(doc, item_id, name=name)
 
 
 def move_placed(doc: ProjectDoc, ids: Iterable[str], delta: XY) -> ProjectDoc:

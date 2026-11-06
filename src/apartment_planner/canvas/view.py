@@ -4,9 +4,9 @@ View coordinates become world cm here (`mapToScene`) and nowhere else.
 """
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
-from PySide6.QtCore import QEvent, QLineF, QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QLineF, QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -20,6 +20,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QGraphicsView, QWidget
 
 from apartment_planner.canvas import style
+from apartment_planner.canvas.name_editor import NameEditor
 from apartment_planner.canvas.scene import PlanScene
 from apartment_planner.canvas.tools import (
     BackgroundTool,
@@ -40,8 +41,13 @@ from apartment_planner.state.background import background_corners
 from apartment_planner.state.editor import EditorState
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.openings import delete_openings, selected_openings
-from apartment_planner.state.placed import delete_placed, selected_placed
-from apartment_planner.state.rooms import delete_selection
+from apartment_planner.state.placed import (
+    delete_placed,
+    placed_item,
+    rename_placed,
+    selected_placed,
+)
+from apartment_planner.state.rooms import delete_selection, rename_room
 
 MIN_SCALE = 0.02  # screen px per cm: 50 m across a 1000 px window
 MAX_SCALE = 40.0
@@ -83,6 +89,7 @@ class PlanView(QGraphicsView):
             "calibrate": CalibrateTool(self),
         }
         self.tool: Tool = self.tools["select"]
+        self.name_editor: NameEditor | None = None  # while a name is edited in place
         self._pan_from: QPoint | None = None
         self._space_held = False
 
@@ -145,6 +152,8 @@ class PlanView(QGraphicsView):
 
     def set_state(self, state: EditorState | None, *, editable: bool) -> None:
         self.tool.cancel()
+        if self.name_editor is not None:
+            self.name_editor.close_without_change()
         self._state = state
         self.editable = editable
         if state is None:
@@ -312,8 +321,73 @@ class PlanView(QGraphicsView):
             self.tool.release(self._pointer(event))
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self._state is not None:
+        if event.button() != Qt.MouseButton.LeftButton or self._state is None:
+            return
+        target = self._name_label_at(event.position().toPoint())
+        if target is not None and self.tool is self.tools["select"]:
+            self._start_rename(*target)
+        else:
             self.tool.double_click(self._pointer(event))
+
+    # Renaming in place: double-click a room's or furniture's name on the plan.
+
+    def _name_label_at(self, point: QPoint) -> tuple[str, QRectF] | None:
+        """The room, furniture or obstacle whose name label is under `point` (in
+        viewport pixels: labels keep their size on screen), with the label's
+        rectangle there. Room labels are drawn on top, so they're found first."""
+        labels = [
+            *self.plan.room_labels.items(),
+            *((item.item_id, item.label) for item in reversed(self.plan.furniture)),
+        ]
+        for target_id, label in labels:
+            rect = label.boundingRect().translated(QPointF(self.mapFromScene(label.scenePos())))
+            if rect.contains(QPointF(point)):
+                return target_id, rect
+        return None
+
+    def _start_rename(self, target_id: str, rect: QRectF) -> None:
+        doc = self.state.doc
+        rooms = {r.id: r for r in doc.apartment.rooms}
+        room = rooms.get(target_id)
+        target = room or placed_item(doc, target_id)
+        furniture = isinstance(target, FurnitureItem)
+        if not self.editable:
+            self.notify("This project is open read-only, so nothing in it can be renamed.")
+            return
+        if not furniture and not self.can_edit_rooms():
+            self.notify("The apartment is locked. Unlock it to rename rooms and obstacles.")
+            return
+        editor = NameEditor(target.name, self.viewport())
+        width = max(rect.width() + 24, 140.0)
+        editor.setGeometry(
+            round(rect.center().x() - width / 2),
+            round(rect.top()),
+            round(width),
+            editor.sizeHint().height(),
+        )
+        rename = rename_room if room is not None else rename_placed
+        editor.chosen.connect(lambda name: self._rename(rename, target_id, target.name, name))
+        editor.destroyed.connect(lambda: setattr(self, "name_editor", None))
+        self.name_editor = editor
+        editor.show()
+        editor.setFocus()
+        editor.selectAll()
+
+    def _rename(
+        self,
+        rename: Callable[[ProjectDoc, str, str], ProjectDoc],
+        target_id: str,
+        old: str,
+        new: str,
+    ) -> None:
+        if new.strip() == old or self._state is None:
+            return
+        try:
+            doc = rename(self._state.doc, target_id, new)
+        except EditError as error:
+            self.notify(str(error))
+            return
+        self._state.commit(doc)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():

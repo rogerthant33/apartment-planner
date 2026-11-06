@@ -73,6 +73,9 @@ def cosmetic_pen(color: QColor, width: float, dashed: bool = False) -> QPen:
     return pen
 
 
+RENAME_TIP = "Double-click to rename"  # on name labels
+
+
 class TextLabel(QGraphicsItem):
     """Text centred on its position (or `shift` screen pixels from it), at a
     constant size on screen."""
@@ -222,6 +225,7 @@ class PlacedItem(QGraphicsPathItem):
             )
         self.setZValue(0.5 if obstacle else 1)
         self.label = TextLabel(item.name + (" (locked)" if locked else ""), self)
+        self.label.setToolTip(RENAME_TIP)
         self.edge_labels: list[TextLabel] = []
         if selected and isinstance(item.shape, PolygonShape):
             corners = [(p.x, p.y) for p in item.shape.points]

@@ -47,7 +47,7 @@ def add_table(window: MainWindow) -> FurnitureItem:
 def test_added_furniture_is_selected_and_shown_in_the_panel(window: MainWindow) -> None:
     table = add_table(window)
 
-    assert (table.name, table.shape) == ("Table", RectShape(width=120, depth=80))
+    assert (table.name, table.shape) == ("Rectangle", RectShape(width=120, depth=80))
     assert editor(window).selection == {table.id}
     assert window.properties.currentWidget() is window.properties.furniture_page
     assert window.properties.furniture_page.fields["width"].text() == "120 cm"
@@ -219,16 +219,16 @@ def test_copy_cut_and_paste_with_the_keyboard(window: MainWindow) -> None:
     QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)
     first, second = furniture(window)[1:]
     assert [(f.name, f.x - table.x, f.y - table.y) for f in (first, second)] == [
-        ("Table 2", 50, 50),
-        ("Table 3", 100, 100),
+        ("Rectangle 2", 50, 50),
+        ("Rectangle 3", 100, 100),
     ]
     assert editor(window).selection == {second.id}
 
     QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)
-    assert [f.name for f in furniture(window)] == ["Table", "Table 2"]
+    assert [f.name for f in furniture(window)] == ["Rectangle", "Rectangle 2"]
     QTest.keyClick(window.view, Qt.Key.Key_V, ctrl)  # back where it was cut from
     pasted = furniture(window)[-1]
-    assert (pasted.name, pasted.x, pasted.y) == ("Table 3", second.x, second.y)
+    assert (pasted.name, pasted.x, pasted.y) == ("Rectangle 3", second.x, second.y)
 
     editor(window).commit(set_locked(editor(window).doc, [pasted.id], True))
     QTest.keyClick(window.view, Qt.Key.Key_X, ctrl)  # refused: the table is locked

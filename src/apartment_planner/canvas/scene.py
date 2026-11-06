@@ -11,6 +11,7 @@ from shapely.ops import unary_union
 
 from apartment_planner.canvas import style
 from apartment_planner.canvas.items import (
+    RENAME_TIP,
     BackgroundItem,
     ClearanceItem,
     HandleItem,
@@ -191,6 +192,7 @@ class PlanScene(QGraphicsScene):
         """Its own item, not the room's child, so it's drawn above the furniture it
         may have to overlap; it moves clear of `blockers` where it can."""
         label = TextLabel(text)
+        label.setToolTip(RENAME_TIP)
         label.setZValue(1.5)
         kept = self._label_spots.get(room.id)
         if kept is not None and kept[0] is room and kept[1:3] == (text, cm_per_px):

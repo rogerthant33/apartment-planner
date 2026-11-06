@@ -42,7 +42,7 @@ OBSTACLE_TEMPLATES: dict[str, tuple[str, Shape]] = {
 
 # What "Add furniture" places: name, category and shape.
 FURNITURE_TEMPLATES: dict[str, tuple[str, str | None, Shape]] = {
-    "rect": ("Table", "Table", RectShape(width=120, depth=80)),
+    "rect": ("Rectangle", None, RectShape(width=120, depth=80)),
     "round": ("Round table", "Table", EllipseShape(rx=45, ry=45)),
     "l_shape": (
         "Corner sofa",
