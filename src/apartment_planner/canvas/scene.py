@@ -1,6 +1,7 @@
 import math
 from collections.abc import Iterable, Sequence
 
+import shapely
 from PySide6.QtCore import QObject, QRectF
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
@@ -28,13 +29,18 @@ from apartment_planner.geometry.hits import shape_corners
 from apartment_planner.geometry.labels import label_position
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
 from apartment_planner.geometry.shapes import placed_polygon, room_polygon
-from apartment_planner.model import FurnitureItem, Placed, ProjectDoc, Room
+from apartment_planner.geometry.transform import XY
+from apartment_planner.model import FurnitureItem, Obstacle, Placed, ProjectDoc, Room
 from apartment_planner.state.placed import selected_placed
 from apartment_planner.state.rooms import room_label, selected_room
 from apartment_planner.state.units import Unit, format_length
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
 SCENE_RECT = QRectF(-20_000, -20_000, 40_000, 40_000)
+
+
+# Shown obstacles and furniture (by identity), hidden IDs, and their union.
+BlockerCache = tuple[tuple[Obstacle, ...], tuple[FurnitureItem, ...], frozenset[str], BaseGeometry]
 
 
 class PlanScene(QGraphicsScene):
@@ -51,6 +57,9 @@ class PlanScene(QGraphicsScene):
         self.background: BackgroundItem | None = None
         self._extras: list[QGraphicsItem] = []  # handles and clearance zones
         self.room_labels: dict[str, TextLabel] = {}  # by room ID
+        # What room labels avoid, and where they went (see _blockers).
+        self._blocker_cache: BlockerCache | None = None
+        self._label_spots: dict[str, tuple[Room, str, float, XY]] = {}
         self.preview = PreviewItem()
         self.addItem(self.preview)
         self.preview.clear()
@@ -103,9 +112,7 @@ class PlanScene(QGraphicsScene):
             if placed.id not in hidden_ids
         ]
         labels = {room.id: room_label(room, doc.settings) for room in doc.apartment.rooms}
-        blockers: BaseGeometry = Polygon()
-        if any(labels.values()):  # only labels need the furniture's union
-            blockers = unary_union([placed_polygon(placed) for placed in shown])
+        blockers = self._blockers(doc, shown, hidden_ids) if any(labels.values()) else Polygon()
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -161,6 +168,23 @@ class PlanScene(QGraphicsScene):
                 self.addItem(readout)
                 self.readouts.append(readout)
 
+    def _blockers(self, doc: ProjectDoc, shown: list[Placed], hidden: set[str]) -> BaseGeometry:
+        """The union of the shown furniture and obstacles, which room labels avoid.
+        It's kept until they change (documents are immutable, so `is` tells), and
+        label spots with it: a selection change or a redraw then reuses both."""
+        obstacles, furniture = doc.apartment.obstacles, doc.active_layout.furniture
+        kept = self._blocker_cache
+        if (
+            kept is None
+            or kept[0] is not obstacles
+            or kept[1] is not furniture
+            or kept[2] != hidden
+        ):
+            union = unary_union([placed_polygon(placed) for placed in shown])
+            self._blocker_cache = kept = (obstacles, furniture, frozenset(hidden), union)
+            self._label_spots = {}
+        return kept[3]
+
     def _add_room_label(
         self, room: Room, text: str, blockers: BaseGeometry, cm_per_px: float
     ) -> None:
@@ -168,9 +192,17 @@ class PlanScene(QGraphicsScene):
         may have to overlap; it moves clear of `blockers` where it can."""
         label = TextLabel(text)
         label.setZValue(1.5)
-        size = label.boundingRect().size()
-        on_plan = (size.width() * cm_per_px, size.height() * cm_per_px)
-        label.setPos(*label_position(room_polygon(room), blockers, on_plan))
+        kept = self._label_spots.get(room.id)
+        if kept is not None and kept[0] is room and kept[1:3] == (text, cm_per_px):
+            spot = kept[3]
+        else:
+            size = label.boundingRect().size()
+            on_plan = (size.width() * cm_per_px, size.height() * cm_per_px)
+            polygon = room_polygon(room)
+            shapely.prepare(polygon)
+            spot = label_position(polygon, blockers, on_plan)
+            self._label_spots[room.id] = (room, text, cm_per_px, spot)
+        label.setPos(*spot)
         self.addItem(label)
         self.room_labels[room.id] = label
 

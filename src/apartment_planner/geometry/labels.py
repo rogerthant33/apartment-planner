@@ -27,6 +27,7 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY |
     clear of `blockers` there, else the nearest spot where the whole label fits in
     the room clear of them. With no such spot, the spot in the room where the
     label covers the least of them; `anchor` if the label can't fit the room.
+    It's quicker with a prepared `room` (`shapely.prepare`).
     A moved label keeps a gap from walls and blockers. `anchor` defaults to
     `label_anchor(room)`."""
     if anchor is None:
@@ -47,7 +48,7 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY |
     ys = _steps(min_y + half_d, max_y - half_d, step, through=y)
     # Nearest first, a batch at a time: a clear spot is usually close by.
     centres = sorted(((cx, cy) for cx in xs for cy in ys), key=lambda c: math.dist(c, anchor))
-    in_room: list[tuple[XY, shapely.Geometry]] = []  # spots in the room, all overlapping
+    in_room: list[XY] = []  # spots in the room, all overlapping something
     for start in range(0, len(centres), BATCH):
         batch = centres[start : start + BATCH]
         boxes = shapely.box(
@@ -58,16 +59,20 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY |
         )
         inside = shapely.contains(room, boxes)
         hit = shapely.intersects(nearby, boxes)
-        for centre, box, ok, blocked in zip(batch, boxes, inside, hit, strict=True):
+        for centre, ok, blocked in zip(batch, inside, hit, strict=True):
             if ok and not blocked:
                 return centre
             if ok:
-                in_room.append((centre, box))
-    if not in_room:
-        return anchor
+                in_room.append(centre)
+
     # Nowhere clear: the least covered spot (the nearest of equals, as they're sorted).
-    covered = shapely.area(shapely.intersection([box for _, box in in_room], nearby))
-    return in_room[int(covered.argmin())][0]
+    # Clipping to the label's box is much cheaper than a general intersection.
+    def covered(spot: XY) -> float:
+        cx, cy = spot
+        box = (cx - half_w, cy - half_d, cx + half_w, cy + half_d)
+        return float(shapely.area(shapely.clip_by_rect(nearby, *box)))
+
+    return min(in_room, key=covered, default=anchor)
 
 
 def _steps(start: float, stop: float, step: float, through: float) -> list[float]:

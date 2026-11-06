@@ -6,7 +6,7 @@ from pytestqt.qtbot import QtBot
 from apartment_planner.canvas.view import MAX_SCALE, MIN_SCALE, PlanView
 from apartment_planner.model import RectShape, new_project
 from apartment_planner.state.editor import EditorState
-from apartment_planner.state.furniture import add_furniture
+from apartment_planner.state.furniture import add_furniture, update_furniture
 from apartment_planner.state.rooms import add_room
 from tests.factories import NOW
 
@@ -87,3 +87,23 @@ def test_room_labels_move_clear_of_furniture_at_the_views_zoom(view: PlanView) -
     label = label_item.sceneBoundingRect()
 
     assert not label.intersects(QRectF(100, 90, 200, 120))
+
+
+def test_room_labels_follow_furniture_as_it_is_hidden_and_moved(view: PlanView) -> None:
+    doc, bed = add_furniture(view.state.doc, RectShape(width=200, depth=120), (200, 150), "Bed")
+    view.state.commit(doc)
+    view.refresh()
+
+    def label_at() -> tuple[float, float]:
+        (label,) = view.plan.room_labels.values()
+        return (label.pos().x(), label.pos().y())
+
+    assert label_at() != (200, 150)
+    view.set_hidden(frozenset({bed}))
+    assert label_at() == (200, 150)
+    view.set_hidden(frozenset())
+    assert label_at() != (200, 150)
+    view.state.commit(update_furniture(view.state.doc, bed, x=400))  # moved well off the centre
+    view.refresh()
+
+    assert label_at() == (200, 150)
