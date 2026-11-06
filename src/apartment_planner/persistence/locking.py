@@ -45,9 +45,7 @@ class ProjectLock:
     def __init__(self, path: Path) -> None:
         self.path = path
         self._file = QLockFile(str(lock_path(path)))
-        # Never treat a lock as stale because of its age: a project can stay open
-        # for days. QLockFile still clears a lock whose process has died on this
-        # computer, which covers crashes.
+        # No age limit (projects stay open for days); dead processes' locks still clear.
         self._file.setStaleLockTime(0)
 
     def acquire(self) -> None:

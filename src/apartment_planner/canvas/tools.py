@@ -625,8 +625,8 @@ class MeasureTool(Tool):
 
     cursor = Qt.CursorShape.CrossCursor
     hint = (
-        "Drag between two points, or click one and then the other, to measure. "
-        "Ends snap to corners and edges of rooms and furniture; hold Alt to measure freely."
+        "Drag, or click two points, to measure. "
+        "Ends snap to corners and edges; hold Alt to measure freely."
     )
 
     def __init__(self, host: Host) -> None:
