@@ -13,7 +13,7 @@ from enum import StrEnum
 from apartment_planner.geometry.constants import EPS
 from apartment_planner.geometry.shapes import shape_outline
 from apartment_planner.geometry.transform import XY, local_to_world_all
-from apartment_planner.model import Placed, Room
+from apartment_planner.model import EllipseShape, Placed, Room
 
 
 class SnapKind(StrEnum):
@@ -92,19 +92,20 @@ def _nearest(point: XY, candidates: Iterable[XY]) -> XY | None:
 
 
 def placed_targets(items: Iterable[Placed]) -> SnapTargets:
-    """The footprint corners and edges of furniture items or obstacles."""
+    """The footprint corners and edges of furniture items or obstacles. An ellipse's
+    outline points aren't corners: only its edges count."""
     vertices: list[XY] = []
     edges: list[tuple[XY, XY]] = []
     for item in items:
         corners = local_to_world_all(shape_outline(item.shape), (item.x, item.y), item.rotation)
-        vertices.extend(corners)
+        if not isinstance(item.shape, EllipseShape):
+            vertices.extend(corners)
         edges.extend(zip(corners, [*corners[1:], corners[0]], strict=True))  # pragma: no mutate
     return SnapTargets(tuple(vertices), tuple(edges))
 
 
-def measure_targets(rooms: Iterable[Room], items: Iterable[Placed]) -> SnapTargets:
-    """What a measurement's ends snap to: the corners and edges of the rooms and of
-    the furniture and obstacles."""
+def plan_targets(rooms: Iterable[Room], items: Iterable[Placed]) -> SnapTargets:
+    """The corners and edges of the rooms and of the furniture and obstacles."""
     walls, placed = room_targets(rooms), placed_targets(items)
     return SnapTargets(walls.vertices + placed.vertices, walls.edges + placed.edges)
 

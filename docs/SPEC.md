@@ -294,7 +294,8 @@ line and its length stay on the plan until the next measurement starts, Escape,
 or another tool is picked, and the status bar shows the distance with its
 horizontal and vertical parts when it's on a slant ("250 cm (200 cm
 horizontal, 150 cm vertical)"). Each end snaps within 10 px to the corners and
-edges of rooms and of visible furniture and obstacles, but not to the grid;
+edges of rooms and of visible furniture and obstacles (the nearest point on a
+round item's edge), but not to the grid;
 Alt (or snapping turned off in the project settings) measures freely. A click
 that doesn't move 4 px waits for the second point; a second click within 4 px
 of the first, or snapping onto it, is ignored, and a drag that snaps back onto

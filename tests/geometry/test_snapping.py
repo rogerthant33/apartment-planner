@@ -1,17 +1,19 @@
 import pytest
 
+from apartment_planner.geometry.constants import ELLIPSE_SEGMENTS
 from apartment_planner.geometry.snapping import (
     SnapKind,
     SnapTargets,
-    measure_targets,
     nearest_on_segment,
     placed_targets,
+    plan_targets,
     room_targets,
     snap,
     snap_move,
     snap_room_move,
 )
-from tests.factories import rect_item, rect_room
+from apartment_planner.model import EllipseShape
+from tests.factories import item, rect_item, rect_room
 
 # Two corners on one wall, and a second wall 10 cm below it.
 TARGETS = SnapTargets(
@@ -184,7 +186,7 @@ def test_a_degenerate_edge_is_snapped_to_as_a_point_with_no_slide() -> None:
 def test_measurements_snap_to_rooms_and_furniture_alike() -> None:
     desk = rect_item(100, 50, rotation=37)  # centred on the origin
 
-    targets = measure_targets([rect_room(0, 0, 100, 100)], [desk])
+    targets = plan_targets([rect_room(0, 0, 100, 100)], [desk])
 
     room_corner, desk_corner = targets.vertices[3:5]
     assert [*room_corner, *desk_corner] == pytest.approx([0, 100, -24.8864, -50.0566], abs=1e-4)
@@ -193,4 +195,12 @@ def test_measurements_snap_to_rooms_and_furniture_alike() -> None:
 
 
 def test_nothing_to_measure_against_gives_no_targets() -> None:
-    assert measure_targets([], []) == SnapTargets()
+    assert plan_targets([], []) == SnapTargets()
+
+
+def test_round_items_snap_by_their_edge_not_their_outline_points() -> None:
+    table = item(EllipseShape(rx=40, ry=40))
+
+    targets = placed_targets([table])
+
+    assert (targets.vertices, len(targets.edges)) == ((), ELLIPSE_SEGMENTS)
