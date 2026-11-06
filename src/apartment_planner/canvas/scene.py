@@ -4,8 +4,11 @@ from collections.abc import Iterable, Sequence
 from PySide6.QtCore import QObject, QRectF
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
+from shapely import Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
+from apartment_planner.canvas import style
 from apartment_planner.canvas.items import (
     BackgroundItem,
     ClearanceItem,
@@ -16,16 +19,18 @@ from apartment_planner.canvas.items import (
     ReadoutItem,
     RoomItem,
     RotateHandleItem,
+    TextLabel,
 )
 from apartment_planner.fit.findings import Finding, Severity
 from apartment_planner.geometry.constants import EPS
 from apartment_planner.geometry.handles import Handle, handle_positions
 from apartment_planner.geometry.hits import shape_corners
+from apartment_planner.geometry.labels import label_position
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
-from apartment_planner.geometry.shapes import placed_polygon
-from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
+from apartment_planner.geometry.shapes import placed_polygon, room_polygon
+from apartment_planner.model import FurnitureItem, Placed, ProjectDoc, Room
 from apartment_planner.state.placed import selected_placed
-from apartment_planner.state.rooms import selected_room
+from apartment_planner.state.rooms import room_label, selected_room
 from apartment_planner.state.units import Unit, format_length
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
@@ -45,13 +50,18 @@ class PlanScene(QGraphicsScene):
         self.readouts: list[ReadoutItem] = []
         self.background: BackgroundItem | None = None
         self._extras: list[QGraphicsItem] = []  # handles and clearance zones
+        self.room_labels: dict[str, TextLabel] = {}  # by room ID
         self.preview = PreviewItem()
         self.addItem(self.preview)
         self.preview.clear()
 
     def clear_plan(self) -> None:
+        labels = self.room_labels.values()
         for item in [*self.rooms, *self.furniture, *self.openings, *self.readouts, *self._extras]:
             self.removeItem(item)
+        for label in labels:
+            self.removeItem(label)
+        self.room_labels = {}
         self.rooms, self.furniture, self.openings, self._extras = [], [], [], []
         self.readouts = []
         if self.background is not None:
@@ -66,14 +76,13 @@ class PlanScene(QGraphicsScene):
         *,
         editable: bool,
         hidden: Iterable[str] = (),
-        rotate_offset: float = 0.0,
         findings: Sequence[Finding] = (),
         background: QPixmap | None = None,
         dimensions: bool = False,
         cm_per_px: float,
     ) -> None:
-        """Redraw everything. `rotate_offset` is the rotate handle's distance in cm,
-        and `cm_per_px` the zoom, which room labels need to move clear of furniture.
+        """Redraw everything at a zoom of `cm_per_px`, which sizes the rotate handle's
+        offset and lets room labels move clear of furniture.
 
         Items involved in `findings` are outlined in their severity's colour.
         `background` is the background image's picture, if it has one and it's
@@ -93,7 +102,10 @@ class PlanScene(QGraphicsScene):
             for placed in (*doc.apartment.obstacles, *doc.active_layout.furniture)
             if placed.id not in hidden_ids
         ]
-        blockers = unary_union([placed_polygon(placed) for placed in shown])
+        labels = {room.id: room_label(room, doc.settings) for room in doc.apartment.rooms}
+        blockers: BaseGeometry = Polygon()
+        if any(labels.values()):  # only labels need the furniture's union
+            blockers = unary_union([placed_polygon(placed) for placed in shown])
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -106,16 +118,12 @@ class PlanScene(QGraphicsScene):
                 handles=handles and reshaped is not None and reshaped.id == room.id,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
-                blockers=blockers,
-                cm_per_px=cm_per_px,
-                name=doc.settings.show_room_names,
-                area=doc.settings.show_room_areas,
             )
             self.addItem(item)
             self.rooms.append(item)
-            if item.label is not None:
-                self.addItem(item.label)
-                self._extras.append(item.label)
+            text = labels[room.id]
+            if text is not None:
+                self._add_room_label(room, text, blockers, cm_per_px)
         rooms = {room.id: room for room in doc.apartment.rooms}
         for opening in doc.apartment.openings:
             drawn = OpeningItem(rooms[opening.room_id], opening, selected=opening.id in selection)
@@ -135,7 +143,7 @@ class PlanScene(QGraphicsScene):
         self._add_readouts(doc, chosen, unit)
         # Obstacles get handles only while the apartment is unlocked; locked furniture none.
         if editable and len(chosen) == 1 and _reshapeable(chosen[0], rooms_editable=handles):
-            self._add_handles(chosen[0], rotate_offset)
+            self._add_handles(chosen[0], style.ROTATE_PX * cm_per_px)
         if doc.settings.grid_size != self.grid_size:
             self.grid_size = doc.settings.grid_size
             self.update()
@@ -152,6 +160,19 @@ class PlanScene(QGraphicsScene):
                 readout = ReadoutItem(segment, format_length(math.dist(*segment), unit))
                 self.addItem(readout)
                 self.readouts.append(readout)
+
+    def _add_room_label(
+        self, room: Room, text: str, blockers: BaseGeometry, cm_per_px: float
+    ) -> None:
+        """Its own item, not the room's child, so it's drawn above the furniture it
+        may have to overlap; it moves clear of `blockers` where it can."""
+        label = TextLabel(text)
+        label.setZValue(1.5)
+        size = label.boundingRect().size()
+        on_plan = (size.width() * cm_per_px, size.height() * cm_per_px)
+        label.setPos(*label_position(room_polygon(room), blockers, on_plan))
+        self.addItem(label)
+        self.room_labels[room.id] = label
 
     def _add_handles(self, item: Placed, rotate_offset: float) -> None:
         for handle, point in handle_positions(item, rotate_offset).items():

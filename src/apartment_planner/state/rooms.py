@@ -8,10 +8,20 @@ import math
 from collections.abc import Callable, Iterable, Sequence
 
 from apartment_planner.geometry.polygon import is_clockwise, signed_area, validate_polygon
+from apartment_planner.geometry.shapes import room_polygon
 from apartment_planner.geometry.transform import XY
-from apartment_planner.model import Opening, Point, ProjectDoc, Room, Vertex, new_id
+from apartment_planner.model import (
+    Opening,
+    Point,
+    ProjectDoc,
+    ProjectSettings,
+    Room,
+    Vertex,
+    new_id,
+)
 from apartment_planner.state.errors import EditError
 from apartment_planner.state.furniture import reassign_rooms
+from apartment_planner.state.units import format_area
 
 MIN_VERTICES = 3
 
@@ -325,3 +335,12 @@ def _projection(point: XY, start: Point, end: Point) -> float:
     dx, dy = end.x - start.x, end.y - start.y
     t = ((point[0] - start.x) * dx + (point[1] - start.y) * dy) / (dx * dx + dy * dy)
     return min(max(t, 0.0), 1.0)
+
+
+def room_label(room: Room, settings: ProjectSettings) -> str | None:
+    """What a room's label says: its name and area, as the settings ask; None for
+    no label."""
+    lines = [room.name] if settings.show_room_names else []
+    if settings.show_room_areas:
+        lines.append(format_area(room_polygon(room).area))
+    return "\n".join(lines) or None

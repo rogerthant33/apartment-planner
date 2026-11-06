@@ -203,7 +203,8 @@ def test_room_names_and_areas_can_be_hidden_for_the_whole_project(window: MainWi
     page = window.properties.settings_page
 
     def labels() -> list[str | None]:
-        return [room.label.text if room.label else None for room in window.view.plan.rooms]
+        label = window.view.plan.room_labels.get(editor(window).doc.apartment.rooms[0].id)
+        return [label.text if label else None]
 
     assert labels() == ["Room 1\n12.00 m²"]
     page.room_names.click()

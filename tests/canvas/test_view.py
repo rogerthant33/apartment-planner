@@ -83,8 +83,7 @@ def test_room_labels_move_clear_of_furniture_at_the_views_zoom(view: PlanView) -
     view.state.commit(doc)  # the bed covers the room's centre
     view.refresh()
 
-    (room,) = view.plan.rooms
-    assert room.label is not None
-    label = room.label.sceneBoundingRect()
+    (label_item,) = view.plan.room_labels.values()
+    label = label_item.sceneBoundingRect()
 
     assert not label.intersects(QRectF(100, 90, 200, 120))

@@ -10,7 +10,6 @@ from apartment_planner.geometry.transform import XY
 
 MAX_STEPS = 60  # candidate positions per side of the room, at most
 GAP = 0.25  # space kept between a moved label and what it avoids, in label heights
-NOTHING: BaseGeometry = Polygon()  # no blockers
 BATCH = 256  # candidate positions tested together
 
 
@@ -23,12 +22,15 @@ def label_anchor(room: Polygon) -> XY:
     return (anchor.x, anchor.y)
 
 
-def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY) -> XY:
+def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY | None = None) -> XY:
     """Where to centre a `size` (width, depth) label in `room`: at `anchor` if it's
     clear of `blockers` there, else the nearest spot where the whole label fits in
     the room clear of them. With no such spot, the spot in the room where the
     label covers the least of them; `anchor` if the label can't fit the room.
-    A moved label keeps a gap from walls and blockers."""
+    A moved label keeps a gap from walls and blockers. `anchor` defaults to
+    `label_anchor(room)`."""
+    if anchor is None:
+        anchor = label_anchor(room)
     width, depth = size
     if width <= 0 or depth <= 0 or blockers.is_empty:
         return anchor
@@ -65,8 +67,7 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY) 
         return anchor
     # Nowhere clear: the least covered spot (the nearest of equals, as they're sorted).
     covered = shapely.area(shapely.intersection([box for _, box in in_room], nearby))
-    least = min(range(len(in_room)), key=lambda i: covered[i])
-    return in_room[least][0]
+    return in_room[int(covered.argmin())][0]
 
 
 def _steps(start: float, stop: float, step: float, through: float) -> list[float]:
