@@ -65,6 +65,8 @@ class ProjectSettings(Model):
     snap_enabled: bool = True
     default_clearance: NonNegative = 60.0  # cm kept free in front of doorways
     apartment_locked: bool = False
+    show_room_names: bool = True  # on the plan and in exports
+    show_room_areas: bool = True
 
 
 class Room(Model):

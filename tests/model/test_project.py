@@ -217,6 +217,8 @@ def test_defaults_follow_the_spec() -> None:
         snap_enabled=True,
         default_clearance=60,
         apartment_locked=False,
+        show_room_names=True,
+        show_room_areas=True,
     )
     assert (bg.rotation, bg.opacity, bg.visible, bg.locked) == (0, 0.5, True, True)
     assert (sofa.rotation, sofa.locked, sofa.clearance) == (0, False, None)

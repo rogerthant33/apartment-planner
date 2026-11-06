@@ -108,11 +108,14 @@ class PlanScene(QGraphicsScene):
                 flag=flags.get(room.id),
                 blockers=blockers,
                 cm_per_px=cm_per_px,
+                name=doc.settings.show_room_names,
+                area=doc.settings.show_room_areas,
             )
             self.addItem(item)
             self.rooms.append(item)
-            self.addItem(item.label)
-            self._extras.append(item.label)
+            if item.label is not None:
+                self.addItem(item.label)
+                self._extras.append(item.label)
         rooms = {room.id: room for room in doc.apartment.rooms}
         for opening in doc.apartment.openings:
             drawn = OpeningItem(rooms[opening.room_id], opening, selected=opening.id in selection)

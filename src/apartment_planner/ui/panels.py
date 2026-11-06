@@ -272,6 +272,12 @@ class SettingsPage(QWidget):
             "Line things up with the grid, walls and other furniture. Hold Alt to snap less."
         )
         self.snap.toggled.connect(self._set_snap)
+        self.room_names = QCheckBox("Show room names")
+        self.room_names.setToolTip("Write each room's name on the plan and in exports")
+        self.room_names.toggled.connect(lambda shown: self._update(show_room_names=shown))
+        self.room_areas = QCheckBox("Show room areas")
+        self.room_areas.setToolTip("Write each room's floor area on the plan and in exports")
+        self.room_areas.toggled.connect(lambda shown: self._update(show_room_areas=shown))
         self.doorway = QLineEdit()
         self.doorway.setToolTip("How far in front of doorways furniture counts as in the way")
         self.doorway.editingFinished.connect(self._set_doorway)
@@ -280,6 +286,8 @@ class SettingsPage(QWidget):
         form.addRow("Units", self.unit)
         form.addRow("Grid size", self.grid)
         form.addRow(self.snap)
+        form.addRow(self.room_names)
+        form.addRow(self.room_areas)
         form.addRow("Doorway clearance", self.doorway)
         layout = QVBoxLayout(self)
         layout.addWidget(section("Project settings", form))
@@ -294,8 +302,17 @@ class SettingsPage(QWidget):
         self.unit.setCurrentText(settings.display_unit)
         self.grid.setText(format_length(settings.grid_size, settings.display_unit))
         self.snap.setChecked(settings.snap_enabled)
+        self.room_names.setChecked(settings.show_room_names)
+        self.room_areas.setChecked(settings.show_room_areas)
         self.doorway.setText(format_length(settings.default_clearance, settings.display_unit))
-        for widget in (self.unit, self.grid, self.snap, self.doorway):
+        for widget in (
+            self.unit,
+            self.grid,
+            self.snap,
+            self.room_names,
+            self.room_areas,
+            self.doorway,
+        ):
             widget.setEnabled(editable)
         self.state = state
 
