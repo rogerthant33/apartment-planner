@@ -197,3 +197,21 @@ def test_measure_tool_is_on_t_even_while_the_apartment_is_locked(window: MainWin
 
     assert window.tool_action["measure"].isChecked()
     assert window.view.tool is window.view.tools["measure"]
+
+
+def test_room_names_and_areas_can_be_hidden_for_the_whole_project(window: MainWindow) -> None:
+    page = window.properties.settings_page
+
+    def labels() -> list[str | None]:
+        label = window.view.plan.room_labels.get(editor(window).doc.apartment.rooms[0].id)
+        return [label.text if label else None]
+
+    assert labels() == ["Room 1\n12.00 m²"]
+    page.room_names.click()
+    assert labels() == ["12.00 m²"]
+    page.room_areas.click()
+
+    assert labels() == [None]
+    settings = editor(window).doc.settings
+    assert (settings.show_room_names, settings.show_room_areas) == (False, False)
+    assert not editor(window).can_undo

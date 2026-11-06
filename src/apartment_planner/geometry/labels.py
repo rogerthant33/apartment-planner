@@ -10,7 +10,7 @@ from apartment_planner.geometry.transform import XY
 
 MAX_STEPS = 60  # candidate positions per side of the room, at most
 GAP = 0.25  # space kept between a moved label and what it avoids, in label heights
-NOTHING: BaseGeometry = Polygon()  # no blockers
+BATCH = 256  # candidate positions tested together
 
 
 def label_anchor(room: Polygon) -> XY:
@@ -22,12 +22,16 @@ def label_anchor(room: Polygon) -> XY:
     return (anchor.x, anchor.y)
 
 
-def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY) -> XY:
+def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY | None = None) -> XY:
     """Where to centre a `size` (width, depth) label in `room`: at `anchor` if it's
     clear of `blockers` there, else the nearest spot where the whole label fits in
     the room clear of them. With no such spot, the spot in the room where the
     label covers the least of them; `anchor` if the label can't fit the room.
-    A moved label keeps a gap from walls and blockers."""
+    It's quicker with a prepared `room` (`shapely.prepare`).
+    A moved label keeps a gap from walls and blockers. `anchor` defaults to
+    `label_anchor(room)`."""
+    if anchor is None:
+        anchor = label_anchor(room)
     width, depth = size
     if width <= 0 or depth <= 0 or blockers.is_empty:
         return anchor
@@ -37,24 +41,38 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY) 
     if not shapely.box(x - half_w, y - half_d, x + half_w, y + half_d).intersects(blockers):
         return anchor
     min_x, min_y, max_x, max_y = room.bounds
+    nearby = shapely.clip_by_rect(blockers, min_x, min_y, max_x, max_y)
+    shapely.prepare(nearby)
     step = max(min(width, depth) / 2, max(max_x - min_x, max_y - min_y) / MAX_STEPS)
     xs = _steps(min_x + half_w, max_x - half_w, step, through=x)
     ys = _steps(min_y + half_d, max_y - half_d, step, through=y)
-    centres = [(cx, cy) for cx in xs for cy in ys]
-    labels = shapely.box(
-        [cx - half_w for cx, _ in centres],
-        [cy - half_d for _, cy in centres],
-        [cx + half_w for cx, _ in centres],
-        [cy + half_d for _, cy in centres],
-    )
-    inside = shapely.contains(room, labels)
-    covered = shapely.area(shapely.intersection(labels, blockers))
-    fits = [
-        (area, math.dist(c, anchor), c)
-        for c, ok, area in zip(centres, inside, covered, strict=True)
-        if ok
-    ]
-    return min(fits, default=(0.0, 0.0, anchor))[2]  # the least covered, then the nearest
+    # Nearest first, a batch at a time: a clear spot is usually close by.
+    centres = sorted(((cx, cy) for cx in xs for cy in ys), key=lambda c: math.dist(c, anchor))
+    in_room: list[XY] = []  # spots in the room, all overlapping something
+    for start in range(0, len(centres), BATCH):
+        batch = centres[start : start + BATCH]
+        boxes = shapely.box(
+            [cx - half_w for cx, _ in batch],
+            [cy - half_d for _, cy in batch],
+            [cx + half_w for cx, _ in batch],
+            [cy + half_d for _, cy in batch],
+        )
+        inside = shapely.contains(room, boxes)
+        hit = shapely.intersects(nearby, boxes)
+        for centre, ok, blocked in zip(batch, inside, hit, strict=True):
+            if ok and not blocked:
+                return centre
+            if ok:
+                in_room.append(centre)
+
+    # Nowhere clear: the least covered spot (the nearest of equals, as they're sorted).
+    # Clipping to the label's box is much cheaper than a general intersection.
+    def covered(spot: XY) -> float:
+        cx, cy = spot
+        box = (cx - half_w, cy - half_d, cx + half_w, cy + half_d)
+        return float(shapely.area(shapely.clip_by_rect(nearby, *box)))
+
+    return min(in_room, key=covered, default=anchor)
 
 
 def _steps(start: float, stop: float, step: float, through: float) -> list[float]:

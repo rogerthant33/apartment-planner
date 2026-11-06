@@ -267,11 +267,22 @@ class SettingsPage(QWidget):
         self.unit.currentTextChanged.connect(self._set_unit)
         self.grid = QLineEdit()
         self.grid.editingFinished.connect(self._set_grid)
-        self.snap = QCheckBox("Snap to grid and rooms")
-        self.snap.setToolTip(
-            "Line things up with the grid, walls and other furniture. Hold Alt to snap less."
+        self._toggles: list[tuple[QCheckBox, str]] = []  # each with its settings field
+        self.snap = self._toggle(
+            "Snap to grid and rooms",
+            "Line things up with the grid, walls and other furniture. Hold Alt to snap less.",
+            "snap_enabled",
         )
-        self.snap.toggled.connect(self._set_snap)
+        self.room_names = self._toggle(
+            "Show room names",
+            "Write each room's name on the plan and in exports",
+            "show_room_names",
+        )
+        self.room_areas = self._toggle(
+            "Show room areas",
+            "Write each room's floor area on the plan and in exports",
+            "show_room_areas",
+        )
         self.doorway = QLineEdit()
         self.doorway.setToolTip("How far in front of doorways furniture counts as in the way")
         self.doorway.editingFinished.connect(self._set_doorway)
@@ -279,7 +290,8 @@ class SettingsPage(QWidget):
         form = QFormLayout()
         form.addRow("Units", self.unit)
         form.addRow("Grid size", self.grid)
-        form.addRow(self.snap)
+        for box, _ in self._toggles:
+            form.addRow(box)
         form.addRow("Doorway clearance", self.doorway)
         layout = QVBoxLayout(self)
         layout.addWidget(section("Project settings", form))
@@ -293,9 +305,10 @@ class SettingsPage(QWidget):
         settings = state.doc.settings
         self.unit.setCurrentText(settings.display_unit)
         self.grid.setText(format_length(settings.grid_size, settings.display_unit))
-        self.snap.setChecked(settings.snap_enabled)
+        for box, field in self._toggles:
+            box.setChecked(getattr(settings, field))
         self.doorway.setText(format_length(settings.default_clearance, settings.display_unit))
-        for widget in (self.unit, self.grid, self.snap, self.doorway):
+        for widget in (self.unit, self.grid, self.doorway, *(box for box, _ in self._toggles)):
             widget.setEnabled(editable)
         self.state = state
 
@@ -307,8 +320,13 @@ class SettingsPage(QWidget):
     def _set_unit(self, unit: str) -> None:
         self._update(display_unit=unit)
 
-    def _set_snap(self, enabled: bool) -> None:
-        self._update(snap_enabled=enabled)
+    def _toggle(self, text: str, tip: str, field: str) -> QCheckBox:
+        """A checkbox for the boolean setting `field`."""
+        box = QCheckBox(text)
+        box.setToolTip(tip)
+        box.toggled.connect(lambda on: self._update(**{field: on}))
+        self._toggles.append((box, field))
+        return box
 
     def _set_grid(self) -> None:
         if self.state is None:

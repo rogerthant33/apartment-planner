@@ -56,3 +56,14 @@ def test_the_stylesheet_follows_light_and_dark(window: MainWindow) -> None:
 
     assert window.styleSheet() == stylesheet(dark=False)
     assert re.search(r"\{[a-z_]+\}", window.styleSheet()) is None  # every colour filled in
+
+
+def test_only_the_tools_are_tinted_when_checked(window: MainWindow) -> None:
+    tinted = [
+        action.text()
+        for action in window.toolbar.actions()
+        if (button := window.toolbar.widgetForAction(action)) and button.property("tool")
+    ]
+
+    assert tinted == ["Select", "Measure"]
+    assert '[tool="true"]:checked' in window.styleSheet()

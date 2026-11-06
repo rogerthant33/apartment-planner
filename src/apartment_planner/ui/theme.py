@@ -10,6 +10,7 @@ from apartment_planner.canvas import style
 DARK_KEY = "appearance/dark"
 Role = QPalette.ColorRole
 
+DARK_DISABLED = "#7b7e83"  # disabled text and buttons
 _DARK_COLOURS = {
     Role.Window: "#2b2d31",
     Role.WindowText: "#e2e2dc",
@@ -37,33 +38,33 @@ def dark_palette() -> QPalette:
     palette = QPalette()
     for role, colour in _DARK_COLOURS.items():
         palette.setColor(role, QColor(colour))
-    disabled = QColor("#7b7e83")
+    disabled = QColor(DARK_DISABLED)
     for role in (Role.WindowText, Role.Text, Role.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, role, disabled)
     return palette
 
 
 # The calm look: soft grey section headings and flat chip buttons in the side
-# panels, so the plan stays the loudest thing on screen.
+# panels, so the plan stays the loudest thing on screen. Only colours no palette
+# has are here; the accent is the canvas's, text and chips the window palette's.
 _STYLE_COLOURS = {
-    False: {"muted": "#6b6f76", "accent": "#2f6fde", "accent_soft": "#e3ecfb",
-            "chip": "#ebebe8", "chip_hover": "#dfdfdb", "text": "#26272a",
-            "disabled": "#a5a7ab"},
-    True: {"muted": "#9a9da3", "accent": "#6b9cf2", "accent_soft": "#2c3a55",
-           "chip": "#3a3d42", "chip_hover": "#45484e", "text": "#e2e2dc",
-           "disabled": "#6c6f74"},
+    False: {"muted": "#6b6f76", "accent_soft": "#e3ecfb", "chip": "#ebebe8",
+            "chip_hover": "#dfdfdb", "disabled": "#a5a7ab"},
+    True: {"muted": "#9a9da3", "accent_soft": "#2c3a55", "chip": _DARK_COLOURS[Role.Midlight],
+           "chip_hover": _DARK_COLOURS[Role.Light], "disabled": DARK_DISABLED},
 }  # fmt: skip
 _STYLESHEET = """
 QToolBar { spacing: 4px; padding: 4px 6px; border: none; }
 QToolBar QToolButton { padding: 5px 9px; border-radius: 6px; }
 QToolBar QToolButton:hover { background: {chip}; }
-QToolBar QToolButton:checked { background: {accent_soft}; color: {accent}; }
+QToolBar QToolButton[tool="true"]:checked { background: {accent_soft}; color: {accent}; }
 QDockWidget { font-weight: 600; }
 QDockWidget::title { padding: 8px 10px 2px 10px; }
 QDockWidget > QWidget { font-weight: normal; }
 QLabel[heading="true"] { color: {muted}; font-weight: 600; padding: 10px 0 2px 0; }
 QDockWidget QToolButton, QDockWidget QPushButton {
-    background: {chip}; border: none; border-radius: 6px; padding: 4px 10px; color: {text};
+    background: {chip}; border: none; border-radius: 6px; padding: 4px 10px;
+    color: palette(button-text);
 }
 QDockWidget QToolButton:hover, QDockWidget QPushButton:hover { background: {chip_hover}; }
 QDockWidget QToolButton:disabled, QDockWidget QPushButton:disabled { color: {disabled}; }
@@ -76,7 +77,8 @@ QGroupBox::title { subcontrol-origin: margin; left: 0; color: {muted}; }
 def stylesheet(dark: bool) -> str:
     """The app's stylesheet in light or dark colours."""
     text = _STYLESHEET
-    for name, colour in _STYLE_COLOURS[dark].items():
+    accent = (style.DARK if dark else style.LIGHT).accent.name()
+    for name, colour in {**_STYLE_COLOURS[dark], "accent": accent}.items():
         text = text.replace("{" + name + "}", colour)
     return text
 

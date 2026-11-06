@@ -28,11 +28,9 @@ from PySide6.QtWidgets import (
     QStyleOptionGraphicsItem,
     QWidget,
 )
-from shapely.geometry.base import BaseGeometry
 
 from apartment_planner.canvas import style
 from apartment_planner.fit.findings import Severity
-from apartment_planner.geometry.labels import NOTHING, label_anchor, label_position
 from apartment_planner.geometry.openings import (
     door_swing,
     edge,
@@ -41,7 +39,7 @@ from apartment_planner.geometry.openings import (
     opening_span,
 )
 from apartment_planner.geometry.readouts import Segment
-from apartment_planner.geometry.shapes import placed_polygon, room_polygon
+from apartment_planner.geometry.shapes import placed_polygon
 from apartment_planner.geometry.transform import XY
 from apartment_planner.model import (
     BackgroundImage,
@@ -55,7 +53,7 @@ from apartment_planner.model import (
     Room,
     Shape,
 )
-from apartment_planner.state.units import Unit, format_area, format_length
+from apartment_planner.state.units import Unit, format_length
 
 
 def flag_color(flag: Severity | None, default: QColor) -> QColor:
@@ -139,25 +137,13 @@ class RoomItem(QGraphicsPolygonItem):
         flag: Severity | None = None,
         dimensions: bool = False,
         openings: Sequence[Opening] = (),
-        blockers: BaseGeometry = NOTHING,
-        cm_per_px: float = 0.0,
     ) -> None:
-        """`blockers` (furniture and obstacles) push the name label aside; it's
-        `cm_per_px` big on screen, so how far depends on the zoom."""
         super().__init__([QPointF(v.x, v.y) for v in room.vertices])
         self.room_id = room.id
         self.flag = flag
         outline = style.colours.accent if selected else flag_color(flag, style.colours.room_outline)
         self.setPen(cosmetic_pen(outline, style.OUTLINE_PX))
         self.setBrush(QBrush(QColor(room.color) if room.color else style.colours.room_fill))
-
-        polygon = room_polygon(room)
-        # Not a child: the scene draws it above furniture, which it may have to overlap.
-        self.label = TextLabel(f"{room.name}\n{format_area(polygon.area)}")
-        self.label.setZValue(1.5)
-        size = self.label.boundingRect().size()
-        on_plan = (size.width() * cm_per_px, size.height() * cm_per_px)
-        self.label.setPos(*label_position(polygon, blockers, on_plan, label_anchor(polygon)))
 
         self.dimension_labels: list[TextLabel] = []
         self.handles: list[HandleItem] = []

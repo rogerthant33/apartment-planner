@@ -1,11 +1,15 @@
 import math
 from collections.abc import Iterable, Sequence
 
+import shapely
 from PySide6.QtCore import QObject, QRectF
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
+from shapely import Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
+from apartment_planner.canvas import style
 from apartment_planner.canvas.items import (
     BackgroundItem,
     ClearanceItem,
@@ -16,20 +20,27 @@ from apartment_planner.canvas.items import (
     ReadoutItem,
     RoomItem,
     RotateHandleItem,
+    TextLabel,
 )
 from apartment_planner.fit.findings import Finding, Severity
 from apartment_planner.geometry.constants import EPS
 from apartment_planner.geometry.handles import Handle, handle_positions
 from apartment_planner.geometry.hits import shape_corners
+from apartment_planner.geometry.labels import label_position
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
-from apartment_planner.geometry.shapes import placed_polygon
-from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
+from apartment_planner.geometry.shapes import placed_polygon, room_polygon
+from apartment_planner.geometry.transform import XY
+from apartment_planner.model import FurnitureItem, Obstacle, Placed, ProjectDoc, Room
 from apartment_planner.state.placed import selected_placed
-from apartment_planner.state.rooms import selected_room
+from apartment_planner.state.rooms import room_label, selected_room
 from apartment_planner.state.units import Unit, format_length
 
 # 400 m square around the origin: room to pan, without huge scroll ranges.
 SCENE_RECT = QRectF(-20_000, -20_000, 40_000, 40_000)
+
+
+# Shown obstacles and furniture (by identity), hidden IDs, and their union.
+BlockerCache = tuple[tuple[Obstacle, ...], tuple[FurnitureItem, ...], frozenset[str], BaseGeometry]
 
 
 class PlanScene(QGraphicsScene):
@@ -45,13 +56,21 @@ class PlanScene(QGraphicsScene):
         self.readouts: list[ReadoutItem] = []
         self.background: BackgroundItem | None = None
         self._extras: list[QGraphicsItem] = []  # handles and clearance zones
+        self.room_labels: dict[str, TextLabel] = {}  # by room ID
+        # What room labels avoid, and where they went (see _blockers).
+        self._blocker_cache: BlockerCache | None = None
+        self._label_spots: dict[str, tuple[Room, str, float, XY]] = {}
         self.preview = PreviewItem()
         self.addItem(self.preview)
         self.preview.clear()
 
     def clear_plan(self) -> None:
+        labels = self.room_labels.values()
         for item in [*self.rooms, *self.furniture, *self.openings, *self.readouts, *self._extras]:
             self.removeItem(item)
+        for label in labels:
+            self.removeItem(label)
+        self.room_labels = {}
         self.rooms, self.furniture, self.openings, self._extras = [], [], [], []
         self.readouts = []
         if self.background is not None:
@@ -66,14 +85,13 @@ class PlanScene(QGraphicsScene):
         *,
         editable: bool,
         hidden: Iterable[str] = (),
-        rotate_offset: float = 0.0,
         findings: Sequence[Finding] = (),
         background: QPixmap | None = None,
         dimensions: bool = False,
-        cm_per_px: float = 0.0,
+        cm_per_px: float,
     ) -> None:
-        """Redraw everything. `rotate_offset` is the rotate handle's distance in cm.
-        `cm_per_px` is the zoom, for moving room labels clear of furniture (0: don't).
+        """Redraw everything at a zoom of `cm_per_px`, which sizes the rotate handle's
+        offset and lets room labels move clear of furniture.
 
         Items involved in `findings` are outlined in their severity's colour.
         `background` is the background image's picture, if it has one and it's
@@ -93,7 +111,8 @@ class PlanScene(QGraphicsScene):
             for placed in (*doc.apartment.obstacles, *doc.active_layout.furniture)
             if placed.id not in hidden_ids
         ]
-        blockers = unary_union([placed_polygon(placed) for placed in shown])
+        labels = {room.id: room_label(room, doc.settings) for room in doc.apartment.rooms}
+        blockers = self._blockers(doc, shown, hidden_ids) if any(labels.values()) else Polygon()
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -106,13 +125,12 @@ class PlanScene(QGraphicsScene):
                 handles=handles and reshaped is not None and reshaped.id == room.id,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
-                blockers=blockers,
-                cm_per_px=cm_per_px,
             )
             self.addItem(item)
             self.rooms.append(item)
-            self.addItem(item.label)
-            self._extras.append(item.label)
+            text = labels[room.id]
+            if text is not None:
+                self._add_room_label(room, text, blockers, cm_per_px)
         rooms = {room.id: room for room in doc.apartment.rooms}
         for opening in doc.apartment.openings:
             drawn = OpeningItem(rooms[opening.room_id], opening, selected=opening.id in selection)
@@ -132,7 +150,7 @@ class PlanScene(QGraphicsScene):
         self._add_readouts(doc, chosen, unit)
         # Obstacles get handles only while the apartment is unlocked; locked furniture none.
         if editable and len(chosen) == 1 and _reshapeable(chosen[0], rooms_editable=handles):
-            self._add_handles(chosen[0], rotate_offset)
+            self._add_handles(chosen[0], style.ROTATE_PX * cm_per_px)
         if doc.settings.grid_size != self.grid_size:
             self.grid_size = doc.settings.grid_size
             self.update()
@@ -149,6 +167,44 @@ class PlanScene(QGraphicsScene):
                 readout = ReadoutItem(segment, format_length(math.dist(*segment), unit))
                 self.addItem(readout)
                 self.readouts.append(readout)
+
+    def _blockers(self, doc: ProjectDoc, shown: list[Placed], hidden: set[str]) -> BaseGeometry:
+        """The union of the shown furniture and obstacles, which room labels avoid.
+        It's kept until they change (documents are immutable, so `is` tells), and
+        label spots with it: a selection change or a redraw then reuses both."""
+        obstacles, furniture = doc.apartment.obstacles, doc.active_layout.furniture
+        kept = self._blocker_cache
+        if (
+            kept is None
+            or kept[0] is not obstacles
+            or kept[1] is not furniture
+            or kept[2] != hidden
+        ):
+            union = unary_union([placed_polygon(placed) for placed in shown])
+            self._blocker_cache = kept = (obstacles, furniture, frozenset(hidden), union)
+            self._label_spots = {}
+        return kept[3]
+
+    def _add_room_label(
+        self, room: Room, text: str, blockers: BaseGeometry, cm_per_px: float
+    ) -> None:
+        """Its own item, not the room's child, so it's drawn above the furniture it
+        may have to overlap; it moves clear of `blockers` where it can."""
+        label = TextLabel(text)
+        label.setZValue(1.5)
+        kept = self._label_spots.get(room.id)
+        if kept is not None and kept[0] is room and kept[1:3] == (text, cm_per_px):
+            spot = kept[3]
+        else:
+            size = label.boundingRect().size()
+            on_plan = (size.width() * cm_per_px, size.height() * cm_per_px)
+            polygon = room_polygon(room)
+            shapely.prepare(polygon)
+            spot = label_position(polygon, blockers, on_plan)
+            self._label_spots[room.id] = (room, text, cm_per_px, spot)
+        label.setPos(*spot)
+        self.addItem(label)
+        self.room_labels[room.id] = label
 
     def _add_handles(self, item: Placed, rotate_offset: float) -> None:
         for handle, point in handle_positions(item, rotate_offset).items():

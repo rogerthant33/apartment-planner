@@ -120,7 +120,9 @@ after confirmation), Show in Folder, and changing the projects folder.
   its area. When furniture or an obstacle covers that spot, the label moves to
   the nearest spot in the room where it's clear of them, with a small gap (or,
   at a zoom where none is clear, where it covers least). Room labels are drawn
-  above furniture, and are placed the same way in exports. The selected room shows its edge lengths. Duplicate (Ctrl+D)
+  above furniture, and are placed the same way in exports. Project settings
+  have "Show room names" and "Show room areas" (both on by default), for the
+  whole project, on screen and in exports; with both off there's no label. The selected room shows its edge lengths. Duplicate (Ctrl+D)
   copies every selected room; each copy is named "<name> copy", copies the
   room's openings and is offset by 50 cm. Copies (duplicated or pasted) only
   take in furniture that stood in no room; furniture keeps the room it was in,
@@ -502,6 +504,8 @@ class ProjectSettings:
     snap_enabled: bool = True
     default_clearance: float = 60   # cm, >= 0: depth kept free in front of doorways
     apartment_locked: bool = False
+    show_room_names: bool = True    # room labels, on screen and in exports
+    show_room_areas: bool = True
 
 class Apartment:
     rooms: list[Room] = []
