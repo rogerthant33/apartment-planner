@@ -107,3 +107,67 @@ def test_room_labels_follow_furniture_as_it_is_hidden_and_moved(view: PlanView) 
     view.refresh()
 
     assert label_at() == (200, 150)
+
+
+def double_click(view: PlanView, scene_point: QPointF) -> None:
+    QTest.mouseDClick(
+        view.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        view.mapFromScene(scene_point),
+    )
+
+
+def with_sofa(view: PlanView) -> str:
+    doc, sofa = add_furniture(view.state.doc, RectShape(width=120, depth=60), (100, 70), "Sofa")
+    view.state.commit(doc)
+    view.refresh()
+    return sofa
+
+
+def test_double_clicking_a_name_renames_it_in_place(view: PlanView) -> None:
+    with_sofa(view)
+    (room_label,) = view.plan.room_labels.values()
+
+    assert room_label.toolTip() == "Double-click to rename"
+    double_click(view, room_label.scenePos())
+    assert view.name_editor is not None and view.name_editor.selectedText() == "Room 1"
+    QTest.keyClicks(view.name_editor, "Kitchen")
+    QTest.keyClick(view.name_editor, Qt.Key.Key_Return)
+    double_click(view, QPointF(100, 70))  # the sofa's label, at its centre
+    assert view.name_editor is not None
+    QTest.keyClicks(view.name_editor, "Couch")
+    QTest.keyClick(view.name_editor, Qt.Key.Key_Escape)  # changed its mind
+
+    assert view.state.doc.apartment.rooms[0].name == "Kitchen"
+    assert view.state.doc.active_layout.furniture[0].name == "Sofa"
+    view.state.undo()  # one step
+    assert view.state.doc.apartment.rooms[0].name == "Room 1"
+
+
+def test_only_the_label_text_opens_the_name_editor(view: PlanView) -> None:
+    with_sofa(view)
+
+    double_click(view, QPointF(50, 50))  # on the sofa, away from its label
+
+    assert view.name_editor is None
+
+
+def test_locked_rooms_cant_be_renamed_but_furniture_can(view: PlanView) -> None:
+    with_sofa(view)
+    doc = view.state.doc
+    view.state.update_untracked(doc.evolve(settings=doc.settings.evolve(apartment_locked=True)))
+    view.refresh()
+    messages: list[str] = []
+    view.message.connect(messages.append)
+    (room_label,) = view.plan.room_labels.values()
+
+    double_click(view, room_label.scenePos())
+    assert view.name_editor is None
+    double_click(view, QPointF(100, 70))
+
+    assert messages == ["The apartment is locked. Unlock it to rename rooms and obstacles."]
+    assert view.name_editor is not None
+    QTest.keyClicks(view.name_editor, "Couch")
+    view.setFocus()  # clicking away keeps the new name
+    assert view.state.doc.active_layout.furniture[0].name == "Couch"

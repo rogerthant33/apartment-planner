@@ -722,7 +722,7 @@ class MainWindow(QMainWindow):
                 self.furniture_actions.append(nudge)
         self.add_actions = []
         for template, text, tip in (
-            ("rect", "Table", "Add a 120 by 80 cm table"),
+            ("rect", "Rectangle", "Add a 120 by 80 cm rectangle"),
             ("round", "Round", "Add a round table, 90 cm across"),
             ("l_shape", "L-Shape", "Add an L-shaped corner sofa"),
         ):
