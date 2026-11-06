@@ -152,8 +152,6 @@ class PlanView(QGraphicsView):
 
     def set_state(self, state: EditorState | None, *, editable: bool) -> None:
         self.tool.cancel()
-        if self.name_editor is not None:
-            self.name_editor.close_without_change()
         self._state = state
         self.editable = editable
         if state is None:
@@ -162,6 +160,9 @@ class PlanView(QGraphicsView):
 
     def refresh(self) -> None:
         """Rebuild the scene from the document; call after every change."""
+        if self.name_editor is not None:
+            # What it renames may have changed or gone (an undo, the lock): start over.
+            self.name_editor.close_without_change()
         if self._state is not None:
             self.plan.sync(
                 self._state.doc,
