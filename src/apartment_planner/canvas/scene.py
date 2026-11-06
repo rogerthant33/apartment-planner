@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from PySide6.QtCore import QObject, QRectF
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
+from shapely.ops import unary_union
 
 from apartment_planner.canvas.items import (
     BackgroundItem,
@@ -21,6 +22,7 @@ from apartment_planner.geometry.constants import EPS
 from apartment_planner.geometry.handles import Handle, handle_positions
 from apartment_planner.geometry.hits import shape_corners
 from apartment_planner.geometry.readouts import Segment, gap_between, wall_gaps
+from apartment_planner.geometry.shapes import placed_polygon
 from apartment_planner.model import FurnitureItem, Placed, ProjectDoc
 from apartment_planner.state.placed import selected_placed
 from apartment_planner.state.rooms import selected_room
@@ -68,8 +70,10 @@ class PlanScene(QGraphicsScene):
         findings: Sequence[Finding] = (),
         background: QPixmap | None = None,
         dimensions: bool = False,
+        cm_per_px: float = 0.0,
     ) -> None:
         """Redraw everything. `rotate_offset` is the rotate handle's distance in cm.
+        `cm_per_px` is the zoom, for moving room labels clear of furniture (0: don't).
 
         Items involved in `findings` are outlined in their severity's colour.
         `background` is the background image's picture, if it has one and it's
@@ -83,6 +87,13 @@ class PlanScene(QGraphicsScene):
             self.addItem(self.background)
         handles = editable and not doc.settings.apartment_locked
         reshaped = selected_room(doc, selection)  # corners show on one room at a time
+        hidden_ids = set(hidden)
+        shown = [
+            placed
+            for placed in (*doc.apartment.obstacles, *doc.active_layout.furniture)
+            if placed.id not in hidden_ids
+        ]
+        blockers = unary_union([placed_polygon(placed) for placed in shown])
         for room in doc.apartment.rooms:
             selected = room.id in selection
             selected_vertex = next((v.id for v in room.vertices if v.id in selection), None)
@@ -95,26 +106,28 @@ class PlanScene(QGraphicsScene):
                 handles=handles and reshaped is not None and reshaped.id == room.id,
                 selected_vertex=selected_vertex,
                 flag=flags.get(room.id),
+                blockers=blockers,
+                cm_per_px=cm_per_px,
             )
             self.addItem(item)
             self.rooms.append(item)
+            self.addItem(item.label)
+            self._extras.append(item.label)
         rooms = {room.id: room for room in doc.apartment.rooms}
         for opening in doc.apartment.openings:
             drawn = OpeningItem(rooms[opening.room_id], opening, selected=opening.id in selection)
             self.addItem(drawn)
             self.openings.append(drawn)
-        hidden_ids = set(hidden)
-        for placed in (*doc.apartment.obstacles, *doc.active_layout.furniture):
-            if placed.id not in hidden_ids:
-                drawn_item = PlacedItem(
-                    placed, unit, selected=placed.id in selection, flag=flags.get(placed.id)
-                )
-                self.addItem(drawn_item)
-                self.furniture.append(drawn_item)
-                if isinstance(placed, FurnitureItem) and placed.clearance:
-                    zone = ClearanceItem(placed)
-                    self.addItem(zone)
-                    self._extras.append(zone)
+        for placed in shown:
+            drawn_item = PlacedItem(
+                placed, unit, selected=placed.id in selection, flag=flags.get(placed.id)
+            )
+            self.addItem(drawn_item)
+            self.furniture.append(drawn_item)
+            if isinstance(placed, FurnitureItem) and placed.clearance:
+                zone = ClearanceItem(placed)
+                self.addItem(zone)
+                self._extras.append(zone)
         chosen = selected_placed(doc, selection)
         self._add_readouts(doc, chosen, unit)
         # Obstacles get handles only while the apartment is unlocked; locked furniture none.

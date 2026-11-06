@@ -162,6 +162,7 @@ class PlanView(QGraphicsView):
                 rotate_offset=style.ROTATE_PX / self.zoom,
                 findings=self.findings,
                 background=self.background_pixmap(),
+                cm_per_px=1 / self.zoom,
             )
 
     @property
