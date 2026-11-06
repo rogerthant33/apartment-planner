@@ -43,11 +43,15 @@ def tool_buttons(actions: list[QAction]) -> QHBoxLayout:
     return row
 
 
-def action_buttons(*labels: str) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
+def action_buttons(
+    *buttons_and_tips: tuple[str, str],
+) -> tuple[QHBoxLayout, dict[str, QPushButton]]:
+    """A row of buttons, by label, each with its hover text."""
     row = QHBoxLayout()
     buttons = {}
-    for label in labels:
+    for label, tip in buttons_and_tips:
         button = QPushButton(label)
+        button.setToolTip(tip)
         row.addWidget(button)
         buttons[label] = button
     row.addStretch()
@@ -95,12 +99,16 @@ class FurniturePage(QWidget):
         self.room = QLabel()
         form.addRow("Room", self.room)
         self.locked = QCheckBox("Locked (can't be moved or resized)")
+        self.locked.setToolTip("Keep it in place while you arrange the rest (L)")
         self.locked.toggled.connect(self._set_locked)
         self.edges: list[QLineEdit] = []
         self._edge_form = QFormLayout()
         self.edges_title = QLabel("Edge lengths")
         self.error = error_label()
-        row, self.buttons = action_buttons("Duplicate", "Delete")
+        row, self.buttons = action_buttons(
+            ("Duplicate", "Add a copy 50 cm away (Ctrl+D)"),
+            ("Delete", "Delete it (Delete)"),
+        )
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.title)
@@ -255,8 +263,16 @@ class SelectionPage(QWidget):
         super().__init__(parent)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        first, self.buttons = action_buttons("Group", "Ungroup", "Lock", "Unlock")
-        second, more = action_buttons("Duplicate", "Delete")
+        first, self.buttons = action_buttons(
+            ("Group", "Make them select and move together (Ctrl+G)"),
+            ("Ungroup", "Let them move separately again (Ctrl+Shift+G)"),
+            ("Lock", "Stop them being moved or resized (L)"),
+            ("Unlock", "Let them be moved and resized again (L)"),
+        )
+        second, more = action_buttons(
+            ("Duplicate", "Add copies 50 cm away (Ctrl+D)"),
+            ("Delete", "Delete them (Delete)"),
+        )
         self.buttons.update(more)
         layout = QVBoxLayout(self)
         layout.addWidget(self.summary)
@@ -285,7 +301,9 @@ class RoomsPage(QWidget):
         super().__init__(parent)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        row, self.buttons = action_buttons("Delete")
+        row, self.buttons = action_buttons(
+            ("Delete", "Delete these rooms and their doors and windows")
+        )
         layout = QVBoxLayout(self)
         layout.addWidget(self.summary)
         layout.addLayout(row)

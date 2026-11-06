@@ -51,7 +51,7 @@ class OpeningPage(QWidget):
         self.swing = _combo(SWINGS)
         self.swing.activated.connect(lambda _: self._commit_door(swing=self.swing.currentData()))
         self.error = error_label()
-        row, self.buttons = action_buttons("Delete")
+        row, self.buttons = action_buttons(("Delete", "Remove this from the wall (Delete)"))
 
         self._form = QFormLayout()
         self._form.addRow("Wall", self.wall)

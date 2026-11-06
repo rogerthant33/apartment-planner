@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QMenu
 from pytestqt.qtbot import QtBot
 
 from apartment_planner.model import new_project
@@ -166,3 +167,16 @@ def test_files_that_cannot_open_are_explained_and_left_alone(
     assert notes.read_text() == "shopping list"
     assert window.project is None
     assert gone not in window.library.recent()
+
+
+def test_help_explains_how_to_get_started(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shown: list[str] = []
+    monkeypatch.setattr(dialogs, "show_info", lambda parent, title, text: shown.append(title))
+    (help_menu,) = [m.menu() for m in window.menuBar().actions() if m.text() == "&Help"]
+    assert isinstance(help_menu, QMenu)
+
+    help_menu.actions()[0].trigger()
+
+    assert shown == ["Getting Started"]

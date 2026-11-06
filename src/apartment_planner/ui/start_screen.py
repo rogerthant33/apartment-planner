@@ -44,6 +44,7 @@ class StartScreen(QWidget):
         self.folder_label = QLabel()
         self.folder_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         change_folder = QPushButton("Change…")
+        change_folder.setToolTip("Choose the folder where projects are listed and created")
         change_folder.clicked.connect(self.change_folder)
 
         self.projects = QTreeWidget()
@@ -61,16 +62,17 @@ class StartScreen(QWidget):
 
         self.buttons: dict[str, QPushButton] = {}
         actions = {
-            "New…": self.new_requested.emit,
-            "Open…": self.browse_requested.emit,
-            "Rename…": self.rename_selected,
-            "Duplicate": self.duplicate_selected,
-            "Delete…": self.delete_selected,
-            "Show in Folder": self.show_selected,
+            "New…": (self.new_requested.emit, "Start a new project (Ctrl+N)"),
+            "Open…": (self.browse_requested.emit, "Open a project from another folder (Ctrl+O)"),
+            "Rename…": (self.rename_selected, "Rename the selected project"),
+            "Duplicate": (self.duplicate_selected, "Make a copy of the selected project"),
+            "Delete…": (self.delete_selected, "Move the selected project to the bin"),
+            "Show in Folder": (self.show_selected, "Show the selected project's file"),
         }
         button_row = QHBoxLayout()
-        for text, slot in actions.items():
+        for text, (slot, tip) in actions.items():
             button = QPushButton(text)
+            button.setToolTip(tip)
             button.clicked.connect(slot)
             button_row.addWidget(button)
             self.buttons[text] = button

@@ -63,7 +63,7 @@ class ToolsPanel(QWidget):
 
     def __init__(
         self,
-        tool_actions: list[QAction],
+        room_actions: list[QAction],
         apartment_actions: list[QAction],
         add_actions: list[QAction],
         layout_actions: list[QAction],
@@ -83,9 +83,9 @@ class ToolsPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Layout"))
         layout.addLayout(layout_row)
-        layout.addWidget(QLabel("Tools"))
-        layout.addLayout(tool_buttons(tool_actions))
-        layout.addWidget(QLabel("Add to the apartment (unlock it first)"))
+        layout.addWidget(QLabel("Add room"))
+        layout.addLayout(tool_buttons(room_actions))
+        layout.addWidget(QLabel("Add to the apartment"))
         layout.addLayout(tool_buttons(apartment_actions))
         layout.addWidget(QLabel("Add furniture"))
         layout.addLayout(tool_buttons(add_actions))
@@ -163,7 +163,9 @@ class RoomPage(QWidget):
         self._edge_form = QFormLayout()
         self.error = error_label()
         self.duplicate = QPushButton("Duplicate")
+        self.duplicate.setToolTip("Add a copy of the room and its doors and windows (Ctrl+D)")
         self.delete = QPushButton("Delete")
+        self.delete.setToolTip("Delete the room and its doors and windows (Delete)")
         buttons = QHBoxLayout()
         buttons.addWidget(self.duplicate)
         buttons.addWidget(self.delete)
@@ -271,6 +273,9 @@ class SettingsPage(QWidget):
         self.grid = QLineEdit()
         self.grid.editingFinished.connect(self._set_grid)
         self.snap = QCheckBox("Snap to grid and rooms")
+        self.snap.setToolTip(
+            "Line things up with the grid, walls and other furniture. Hold Alt to snap less."
+        )
         self.snap.toggled.connect(self._set_snap)
         self.doorway = QLineEdit()
         self.doorway.setToolTip("How far in front of doorways furniture counts as in the way")
