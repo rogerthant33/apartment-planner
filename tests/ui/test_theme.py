@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from apartment_planner.model import new_project
 from apartment_planner.state.rooms import add_room
 from apartment_planner.ui.export import export_png
 from apartment_planner.ui.main_window import MainWindow
-from apartment_planner.ui.theme import DARK_KEY
+from apartment_planner.ui.theme import DARK_KEY, stylesheet
 from tests.factories import NOW
 
 
@@ -45,3 +46,13 @@ def test_exports_are_light_in_dark_mode(window: MainWindow, tmp_path: Path) -> N
 
     assert (tmp_path / "dark.png").read_bytes() == (tmp_path / "light.png").read_bytes()
     assert style.is_dark()  # the screen stays dark
+
+
+def test_the_stylesheet_follows_light_and_dark(window: MainWindow) -> None:
+    window.set_dark(True)
+    assert "#9a9da3" in window.styleSheet()  # dark mode's muted headings
+
+    window.set_dark(False)
+
+    assert window.styleSheet() == stylesheet(dark=False)
+    assert re.search(r"\{[a-z_]+\}", window.styleSheet()) is None  # every colour filled in

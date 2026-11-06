@@ -614,6 +614,11 @@ Selection is a thin accent outline with small square handles. Red is reserved
 for collisions and amber for warnings. Precision and legibility come before
 decoration.
 
+Around the plan the look is calm, so the plan stays the focus: side-panel
+sections have soft grey headings and flat, borderless "chip" buttons, and the
+active tool in the toolbar is tinted with the accent colour
+(`ui/theme.py`, applied to the main window).
+
 Dark mode is switched from the toolbar and remembered per computer (not per
 project). The first time, it follows the system's appearance. Exports are
 always drawn in the light colours.

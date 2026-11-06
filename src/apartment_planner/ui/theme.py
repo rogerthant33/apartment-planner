@@ -43,6 +43,44 @@ def dark_palette() -> QPalette:
     return palette
 
 
+# The calm look: soft grey section headings and flat chip buttons in the side
+# panels, so the plan stays the loudest thing on screen.
+_STYLE_COLOURS = {
+    False: {"muted": "#6b6f76", "accent": "#2f6fde", "accent_soft": "#e3ecfb",
+            "chip": "#ebebe8", "chip_hover": "#dfdfdb", "text": "#26272a",
+            "disabled": "#a5a7ab"},
+    True: {"muted": "#9a9da3", "accent": "#6b9cf2", "accent_soft": "#2c3a55",
+           "chip": "#3a3d42", "chip_hover": "#45484e", "text": "#e2e2dc",
+           "disabled": "#6c6f74"},
+}  # fmt: skip
+_STYLESHEET = """
+QToolBar { spacing: 4px; padding: 4px 6px; border: none; }
+QToolBar QToolButton { padding: 5px 9px; border-radius: 6px; }
+QToolBar QToolButton:hover { background: {chip}; }
+QToolBar QToolButton:checked { background: {accent_soft}; color: {accent}; }
+QDockWidget { font-weight: 600; }
+QDockWidget::title { padding: 8px 10px 2px 10px; }
+QDockWidget > QWidget { font-weight: normal; }
+QLabel[heading="true"] { color: {muted}; font-weight: 600; padding: 10px 0 2px 0; }
+QDockWidget QToolButton, QDockWidget QPushButton {
+    background: {chip}; border: none; border-radius: 6px; padding: 4px 10px; color: {text};
+}
+QDockWidget QToolButton:hover, QDockWidget QPushButton:hover { background: {chip_hover}; }
+QDockWidget QToolButton:disabled, QDockWidget QPushButton:disabled { color: {disabled}; }
+QDockWidget QToolButton:checked { background: {accent_soft}; color: {accent}; }
+QGroupBox { border: none; margin-top: 18px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; left: 0; color: {muted}; }
+"""
+
+
+def stylesheet(dark: bool) -> str:
+    """The app's stylesheet in light or dark colours."""
+    text = _STYLESHEET
+    for name, colour in _STYLE_COLOURS[dark].items():
+        text = text.replace("{" + name + "}", colour)
+    return text
+
+
 def system_is_dark() -> bool:
     return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
 

@@ -51,7 +51,7 @@ from apartment_planner.ui.open_project import OpenProject, local_now
 from apartment_planner.ui.panels import PropertiesPanel, ToolsPanel
 from apartment_planner.ui.reveal import show_in_folder
 from apartment_planner.ui.start_screen import StartScreen
-from apartment_planner.ui.theme import DARK_KEY, apply_theme, saved_dark
+from apartment_planner.ui.theme import DARK_KEY, apply_theme, saved_dark, stylesheet
 
 APP_NAME = "Apartment Planner"
 GEOMETRY_KEY = "window/geometry"
@@ -309,6 +309,8 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if isinstance(app, QApplication):
             apply_theme(app, dark)
+        # On the window, not the app: restyling is then limited to this window.
+        self.setStyleSheet(stylesheet(dark))
         self._update_icons()
 
     def _update_icons(self) -> None:
