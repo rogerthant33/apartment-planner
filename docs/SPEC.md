@@ -49,8 +49,9 @@ obstacles, then try out several furniture layouts and check what fits.
 Desktop-first main window with three columns.
 
 - **Left panel:** layout switcher (add, rename, duplicate and delete layouts),
-  tools, "add to the apartment" tools and obstacle templates (enabled while
-  the apartment is unlocked), "add furniture" templates (table, round table,
+  "Add room" (rectangle and custom-shape room tools) and "Add to the
+  apartment" (door, window, opening and obstacle templates), both enabled while
+  the apartment is unlocked, "add furniture" templates (table, round table,
   L-shaped corner sofa, placed at the centre of the view) and the custom shape
   tool, the room list and the furniture list. Drawing and placing tools go back
   to the select tool once they've made their room, shape or opening.
@@ -62,15 +63,20 @@ Desktop-first main window with three columns.
   rotation, label, color, notes, metadata), actions (duplicate, delete, lock,
   group), and the warnings list for the current layout.
 - **Toolbar:** undo/redo, a padlock "Lock apartment" toggle (its icon shows
-  locked or unlocked; hovering explains it), a zoom-to-fit icon, export plan,
-  and a dark-mode toggle at the far end. The **status bar** shows save status:
+  locked or unlocked; hovering explains it), a zoom-to-fit icon, the Select and
+  Measure tools, export plan, and a dark-mode toggle at the far end. The **status bar** shows save status:
   Saving… (while a save is waiting or running) / Saved / Save failed —
   retrying / Read-only.
 - **Menus:** File (New, Open…, Open Recent, Save Now, Save a Copy As…,
-  Rename…, Show in Folder, Import Image…, Export Plan…, Close, Quit) and Help.
+  Rename…, Show in Folder, Import Image…, Export Plan…, Close, Quit) and Help
+  (Getting Started, F1: three steps, what fit checks catch, and to hover over
+  any button to learn more; About).
   Everything else is a button, panel control or keyboard shortcut (select all,
   copy, cut and paste have only shortcuts); shortcuts work without a menu entry. Zoom is Ctrl + wheel or Ctrl +/−;
   snapping is a project setting.
+
+Every button, checkbox and toolbar icon has hover text saying what it does
+(with its shortcut), checked by a test that walks the whole window.
 
 ### Start screen
 
@@ -288,7 +294,7 @@ Shortcuts are ignored while a text field has focus.
 
 ### Measuring
 
-The Measure tool (T, under Tools next to Select) measures the distance between
+The Measure tool (T, in the toolbar next to Select) measures the distance between
 two points: drag from one to the other, or click one and then the other. The
 line and its length stay on the plan until the next measurement starts, Escape,
 or another tool is picked, and the status bar shows the distance with its

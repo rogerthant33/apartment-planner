@@ -32,6 +32,10 @@ def show_error(parent: QWidget | None, title: str, text: str) -> None:
     QMessageBox.warning(parent, title, text)
 
 
+def show_info(parent: QWidget | None, title: str, text: str) -> None:
+    QMessageBox.information(parent, title, text)
+
+
 def confirm(parent: QWidget | None, title: str, text: str, action: str) -> bool:
     box = QMessageBox(QMessageBox.Icon.Question, title, text, parent=parent)
     yes = box.addButton(action, QMessageBox.ButtonRole.AcceptRole)

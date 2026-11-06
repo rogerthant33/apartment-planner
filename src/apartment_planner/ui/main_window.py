@@ -58,6 +58,18 @@ GEOMETRY_KEY = "window/geometry"
 MESSAGE_MS = 8000
 
 
+GETTING_STARTED = """\
+1. Create rooms: unlock the apartment with the padlock, then use Add room. Type \
+exact wall lengths on the right.
+2. Add doors, windows and furniture, and drag them into place.
+3. Measure anything with Measure (T).
+
+Door swings and the space furniture needs are drawn as you go, and anything \
+that collides or blocks a door is listed under Fit Checks.
+
+Hover over any button or icon to learn more."""
+
+
 class Banner(QFrame):
     """A message across the top of the editor, with an optional action button."""
 
@@ -69,6 +81,7 @@ class Banner(QFrame):
         self.button = QPushButton()
         self.button.clicked.connect(self._trigger)
         dismiss = QPushButton("Dismiss")
+        dismiss.setToolTip("Hide this message")
         dismiss.clicked.connect(self.hide)
         layout = QHBoxLayout(self)
         layout.addWidget(self.label, 1)
@@ -83,6 +96,7 @@ class Banner(QFrame):
         self.button.setVisible(action is not None)
         if action is not None:
             self.button.setText(action.text())
+            self.button.setToolTip(action.toolTip())
         self.show()
 
     def _trigger(self) -> None:
@@ -138,7 +152,7 @@ class MainWindow(QMainWindow):
         self._create_actions()
         tool = self.tool_action
         self.tools = ToolsPanel(
-            [tool["select"], tool["measure"], tool["rect"], tool["polygon"]],
+            [tool["rect"], tool["polygon"]],
             [*self.opening_tool_actions, *self.obstacle_actions],
             [*self.add_actions, tool["shape"]],
             self.layout_actions,
@@ -166,7 +180,7 @@ class MainWindow(QMainWindow):
         self.view.calibration_requested.connect(self._calibrate)
         self.view.tool_changed.connect(lambda name: self.tool_action[name].setChecked(True))
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
-        self.tools_panel = self._add_panel("Tools", left, self.tools)
+        self.tools_panel = self._add_panel("Plan", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
         self.findings = FindingsPanel()
         self.findings.finding_activated.connect(self._select_finding)
@@ -617,7 +631,9 @@ class MainWindow(QMainWindow):
             return created
 
         self.undo_action = action("Undo", self.undo, QKeySequence.StandardKey.Undo)
+        self.undo_action.setToolTip("Take back the last change (Ctrl+Z)")
         self.redo_action = action("Redo", self.redo)
+        self.redo_action.setToolTip("Make the change again (Ctrl+Shift+Z)")
         redo_keys = [
             *QKeySequence.keyBindings(QKeySequence.StandardKey.Redo),
             QKeySequence("Ctrl+Y"),
@@ -665,7 +681,7 @@ class MainWindow(QMainWindow):
         self.lock_action.toggled.connect(self.set_apartment_locked)
         self.theme_action = QAction("Dark Mode", self)
         self.theme_action.setCheckable(True)
-        self.theme_action.setToolTip("Dark mode")
+        self.theme_action.setToolTip("Switch between light and dark mode")
         self.zoom_in_action = action(
             "Zoom In", lambda: self.view.zoom_by(1.25), QKeySequence.StandardKey.ZoomIn
         )
@@ -702,10 +718,15 @@ class MainWindow(QMainWindow):
                 nudge = action(f"Nudge {key}", move, f"{modifier}{key}")
                 self.addAction(nudge)  # shortcuts only, not in a menu
                 self.furniture_actions.append(nudge)
-        self.add_actions = [
-            action(text, lambda _=False, t=template: commands.add(t))
-            for template, text in (("rect", "Table"), ("round", "Round"), ("l_shape", "L-Shape"))
-        ]
+        self.add_actions = []
+        for template, text, tip in (
+            ("rect", "Table", "Add a 120 by 80 cm table"),
+            ("round", "Round", "Add a round table, 90 cm across"),
+            ("l_shape", "L-Shape", "Add an L-shaped corner sofa"),
+        ):
+            add = action(text, lambda _=False, t=template: commands.add(t))
+            add.setToolTip(f"{tip} in the middle of the view; resize it on the right")
+            self.add_actions.append(add)
         self.obstacle_actions = [
             action(text, lambda _=False, t=template: commands.add_obstacle(t))
             for template, text in (
@@ -737,9 +758,13 @@ class MainWindow(QMainWindow):
         self.rename_action = action("Rename…", self.rename_project)
         self.show_in_folder_action = action("Show in Folder", self.show_in_folder)
         self.export_action = action("Export Plan…", self.export_plan, "Ctrl+E")
+        self.export_action.setToolTip("Save the plan as a PDF or PNG to print or share (Ctrl+E)")
         self.close_action = action("Close", self.close_project, QKeySequence.StandardKey.Close)
         self.quit_action = action("Quit", self.close, QKeySequence.StandardKey.Quit)
         self.quit_action.setMenuRole(QAction.MenuRole.QuitRole)
+        self.getting_started_action = action(
+            "Getting Started", self._getting_started, QKeySequence.StandardKey.HelpContents
+        )
         self.about_action = action(f"About {APP_NAME}", self._about)
         self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
 
@@ -777,7 +802,7 @@ class MainWindow(QMainWindow):
             ]
         )
         help_menu = self.menuBar().addMenu("&Help")
-        help_menu.addAction(self.about_action)
+        help_menu.addActions([self.getting_started_action, self.about_action])
 
     def _fill_recent_menu(self) -> None:
         self.recent_menu.clear()
@@ -788,6 +813,9 @@ class MainWindow(QMainWindow):
             entry.triggered.connect(lambda _=False, p=path: self.open_path(p))
         if not recent:
             self.recent_menu.addAction("No recent projects").setEnabled(False)
+
+    def _getting_started(self) -> None:
+        dialogs.show_info(self, "Getting Started", GETTING_STARTED)
 
     def _about(self) -> None:
         QMessageBox.about(
@@ -803,6 +831,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addActions([self.undo_action, self.redo_action])
         self.toolbar.addSeparator()
         self.toolbar.addActions([self.lock_action, self.zoom_fit_action])
+        self.toolbar.addSeparator()
+        self.toolbar.addActions([self.tool_action["select"], self.tool_action["measure"]])
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.export_action)
         spacer = QWidget()
