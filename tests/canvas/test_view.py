@@ -171,3 +171,19 @@ def test_locked_rooms_cant_be_renamed_but_furniture_can(view: PlanView) -> None:
     QTest.keyClicks(view.name_editor, "Couch")
     view.setFocus()  # clicking away keeps the new name
     assert view.state.doc.active_layout.furniture[0].name == "Couch"
+
+
+def test_a_change_under_the_name_editor_closes_it_unsaved(view: PlanView) -> None:
+    (room_label,) = view.plan.room_labels.values()
+    double_click(view, room_label.scenePos())
+    editor = view.name_editor
+    assert editor is not None
+    QTest.keyClicks(editor, "Kitchen")
+
+    doc = view.state.doc  # locked from the toolbar, which doesn't take the focus
+    view.state.update_untracked(doc.evolve(settings=doc.settings.evolve(apartment_locked=True)))
+    view.refresh()
+    QTest.keyClick(editor, Qt.Key.Key_Return)
+
+    assert editor.isHidden()
+    assert view.state.doc.apartment.rooms[0].name == "Room 1"

@@ -239,7 +239,8 @@ product details. Hovering over Clearance explains it.
 - Rename in place: with the Select tool, double-clicking a room's or a piece of
   furniture's name label on the plan (the label's text, not the rest of the
   shape) opens a text box over it with the name selected. Enter or clicking
-  elsewhere renames it (one undo step); Escape cancels. Name labels say
+  elsewhere renames it (one undo step); Escape cancels. Any change to the plan
+  while it's open (an undo, locking the apartment, zooming) closes it unsaved. Name labels say
   "Double-click to rename" on hover. Rooms and obstacles need the apartment
   unlocked (otherwise a message says so); furniture, even locked, can be
   renamed. The properties panel's Name field does the same.
