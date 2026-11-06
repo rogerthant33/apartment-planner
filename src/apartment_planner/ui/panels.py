@@ -85,7 +85,7 @@ class ToolsPanel(QWidget):
         layout.addLayout(layout_row)
         layout.addWidget(QLabel("Tools"))
         layout.addLayout(tool_buttons(tool_actions))
-        layout.addWidget(QLabel("Add to the apartment (unlock it first)"))
+        layout.addWidget(QLabel("Add to the apartment"))
         layout.addLayout(tool_buttons(apartment_actions))
         layout.addWidget(QLabel("Add furniture"))
         layout.addLayout(tool_buttons(add_actions))
