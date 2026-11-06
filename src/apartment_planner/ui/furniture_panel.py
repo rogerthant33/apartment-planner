@@ -29,6 +29,7 @@ from apartment_planner.state.placed import placed_item, update_placed
 from apartment_planner.state.units import format_length, parse_length
 from apartment_planner.ui.colour_button import ColourButton
 from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
+from apartment_planner.ui.sections import heading
 
 
 def tool_buttons(actions: list[QAction]) -> QHBoxLayout:
@@ -95,7 +96,7 @@ class FurniturePage(QWidget):
         )
         clearance.setToolTip(tip)
         form.labelForField(clearance).setToolTip(tip)
-        self.title = QLabel()
+        self.title = heading("")
         self.room = QLabel()
         form.addRow("Room", self.room)
         self.locked = QCheckBox("Locked (can't be moved or resized)")
@@ -103,7 +104,7 @@ class FurniturePage(QWidget):
         self.locked.toggled.connect(self._set_locked)
         self.edges: list[QLineEdit] = []
         self._edge_form = QFormLayout()
-        self.edges_title = QLabel("Edge lengths")
+        self.edges_title = heading("Edge lengths")
         self.error = error_label()
         row, self.buttons = action_buttons(
             ("Duplicate", "Add a copy 50 cm away (Ctrl+D)"),

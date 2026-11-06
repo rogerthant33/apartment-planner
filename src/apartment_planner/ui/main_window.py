@@ -180,7 +180,7 @@ class MainWindow(QMainWindow):
         self.view.calibration_requested.connect(self._calibrate)
         self.view.tool_changed.connect(lambda name: self.tool_action[name].setChecked(True))
         left, right = Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
-        self.tools_panel = self._add_panel("Tools", left, self.tools)
+        self.tools_panel = self._add_panel("Plan", left, self.tools)
         self.properties_panel = self._add_panel("Properties", right, self.properties)
         self.findings = FindingsPanel()
         self.findings.finding_activated.connect(self._select_finding)

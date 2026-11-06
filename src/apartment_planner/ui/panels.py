@@ -48,6 +48,7 @@ from apartment_planner.ui.furniture_panel import (
 )
 from apartment_planner.ui.inline_errors import commit_or_refuse, error_label, show_error
 from apartment_planner.ui.opening_panel import OpeningPage
+from apartment_planner.ui.sections import heading, section
 
 ROOM_ID = Qt.ItemDataRole.UserRole  # the ID of a list entry's room or item
 UNITS: tuple[Unit, ...] = ("mm", "cm", "m")
@@ -81,18 +82,12 @@ class ToolsPanel(QWidget):
         self.furniture.itemClicked.connect(self._furniture_clicked)
         self.furniture.itemChanged.connect(lambda _: self.visibility_changed.emit(self.hidden()))
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Layout"))
-        layout.addLayout(layout_row)
-        layout.addWidget(QLabel("Add room"))
-        layout.addLayout(tool_buttons(room_actions))
-        layout.addWidget(QLabel("Add to the apartment"))
-        layout.addLayout(tool_buttons(apartment_actions))
-        layout.addWidget(QLabel("Add furniture"))
-        layout.addLayout(tool_buttons(add_actions))
-        layout.addWidget(QLabel("Rooms"))
-        layout.addWidget(self.rooms, 1)
-        layout.addWidget(QLabel("Furniture (untick to hide)"))
-        layout.addWidget(self.furniture, 2)
+        layout.addWidget(section("Layout", layout_row))
+        layout.addWidget(section("Add room", tool_buttons(room_actions)))
+        layout.addWidget(section("Add to the apartment", tool_buttons(apartment_actions)))
+        layout.addWidget(section("Add furniture", tool_buttons(add_actions)))
+        layout.addWidget(section("Rooms", self.rooms), 1)
+        layout.addWidget(section("Furniture (untick to hide)", self.furniture), 2)
 
     def refresh(self, doc: ProjectDoc, selection: frozenset[str], hidden: frozenset[str]) -> None:
         self.layouts.blockSignals(True)
@@ -177,7 +172,7 @@ class RoomPage(QWidget):
         form.addRow("Colour", self.colour)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
-        layout.addWidget(QLabel("Edge lengths"))
+        layout.addWidget(heading("Edge lengths"))
         layout.addLayout(self._edge_form)
         layout.addWidget(self.error)
         layout.addLayout(buttons)
@@ -287,8 +282,7 @@ class SettingsPage(QWidget):
         form.addRow(self.snap)
         form.addRow("Doorway clearance", self.doorway)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Project settings"))
-        layout.addLayout(form)
+        layout.addWidget(section("Project settings", form))
         layout.addWidget(self.error)
         layout.addWidget(self.background)
         layout.addStretch()
