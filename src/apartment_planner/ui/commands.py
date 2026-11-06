@@ -56,9 +56,7 @@ class Commands:
     def __init__(self, view: PlanView) -> None:
         self.view = view
         self.clip: Clip | None = None  # what Ctrl+C or Ctrl+X took, for Ctrl+V
-        # How many offsets on the next paste lands: each paste a step further on, the
-        # first after a copy one step, and the first after a cut back in place.
-        self._paste_step = 1
+        self._paste_step = 1  # offsets for the next paste: 0 straight after a cut
 
     @property
     def state(self) -> EditorState | None:

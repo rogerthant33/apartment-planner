@@ -200,8 +200,7 @@ def _slide_onto(
     for (ax, ay), (bx, by) in edges:
         ex, ey = bx - ax, by - ay
         denominator = ux * ey - uy * ex  # the edge's length times the sine between them
-        # (Nearly) parallel to the slide, such as the edge it's flush against: within
-        # reach it strays less than EPS from it, so it makes no corner.
+        # Skip edges (nearly) parallel to the slide, like the one it's flush against.
         if abs(denominator) * tolerance > EPS * math.hypot(ex, ey):
             crossing.append((ax, ay, ex, ey, denominator))
     best: float | None = None

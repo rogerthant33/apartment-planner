@@ -58,9 +58,8 @@ def door_swing(room: Room, opening: Opening) -> Polygon:
     if opening.door is None:
         raise ValueError("Only doors swing")
     start, end = opening_span(room, opening)
-    # pragmas below: hinge and swing are validated Literals, which pydantic returns as
-    # the literal objects themselves, and "end" < "start", "in" < "out". So `is` and
-    # `>=` mutants behave the same.
+    # pragmas: hinge and swing are validated Literals ("end" < "start", "in" < "out"),
+    # so `is` and `>=` mutants are equivalent.
     hinged_at_start = opening.door.hinge == "start"  # pragma: no mutate
     hinge, tip = (start, end) if hinged_at_start else (end, start)
     nx, ny = inward_normal(*edge(room, opening.edge_start_vertex_id))

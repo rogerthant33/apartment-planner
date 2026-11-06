@@ -20,7 +20,7 @@ hard-coded separators, and no OS-specific shell in tooling.
 - `uv run mypy`: type-check
 - `uv run ruff check` / `uv run ruff format`: lint / format
 - `uv run python packaging/build.py`: packaged build for this OS, into `dist/`
-  (a whole folder, not just the `.exe`; README.md says how to share it)
+  (share the whole folder, not just the `.exe`)
 - `uv add <pkg>` / `uv add --dev <pkg>`: add dependencies (never pip install)
 
 Before calling work done, run `uv run ruff check`, `uv run mypy` and

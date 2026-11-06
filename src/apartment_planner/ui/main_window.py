@@ -553,7 +553,7 @@ class MainWindow(QMainWindow):
         for action in self.image_tool_actions:
             action.setEnabled(editable and has_image)
         self.import_background_action.setEnabled(editable)
-        # Like cut and paste, these decide what they can do, and say so if nothing.
+        # Like cut and paste, these explain when they can't act.
         self.duplicate_action.setEnabled(editable)
         self.delete_action.setEnabled(editable)
         for action in (*self.furniture_actions, *self.add_actions, *self.layout_actions):
