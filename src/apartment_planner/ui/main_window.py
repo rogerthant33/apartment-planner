@@ -834,7 +834,10 @@ class MainWindow(QMainWindow):
         self.toolbar.addSeparator()
         self.toolbar.addActions([self.lock_action, self.zoom_fit_action])
         self.toolbar.addSeparator()
-        self.toolbar.addActions([self.tool_action["select"], self.tool_action["measure"]])
+        for name in ("select", "measure"):
+            self.toolbar.addAction(self.tool_action[name])
+            # Only the active tool is tinted, not the padlock or dark-mode toggles.
+            self.toolbar.widgetForAction(self.tool_action[name]).setProperty("tool", True)
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.export_action)
         spacer = QWidget()

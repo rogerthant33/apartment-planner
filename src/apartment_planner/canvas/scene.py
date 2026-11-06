@@ -70,10 +70,10 @@ class PlanScene(QGraphicsScene):
         findings: Sequence[Finding] = (),
         background: QPixmap | None = None,
         dimensions: bool = False,
-        cm_per_px: float = 0.0,
+        cm_per_px: float,
     ) -> None:
-        """Redraw everything. `rotate_offset` is the rotate handle's distance in cm.
-        `cm_per_px` is the zoom, for moving room labels clear of furniture (0: don't).
+        """Redraw everything. `rotate_offset` is the rotate handle's distance in cm,
+        and `cm_per_px` the zoom, which room labels need to move clear of furniture.
 
         Items involved in `findings` are outlined in their severity's colour.
         `background` is the background image's picture, if it has one and it's

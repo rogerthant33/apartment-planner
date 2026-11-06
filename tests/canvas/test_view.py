@@ -4,8 +4,9 @@ from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
 
 from apartment_planner.canvas.view import MAX_SCALE, MIN_SCALE, PlanView
-from apartment_planner.model import new_project
+from apartment_planner.model import RectShape, new_project
 from apartment_planner.state.editor import EditorState
+from apartment_planner.state.furniture import add_furniture
 from apartment_planner.state.rooms import add_room
 from tests.factories import NOW
 
@@ -75,3 +76,15 @@ def test_pointer_input_arrives_in_world_cm_at_any_zoom(view: PlanView) -> None:
         (300, 550),
         (100, 550),
     ]
+
+
+def test_room_labels_move_clear_of_furniture_at_the_views_zoom(view: PlanView) -> None:
+    doc, _ = add_furniture(view.state.doc, RectShape(width=200, depth=120), (200, 150), "Bed")
+    view.state.commit(doc)  # the bed covers the room's centre
+    view.refresh()
+
+    (room,) = view.plan.rooms
+    assert room.label is not None
+    label = room.label.sceneBoundingRect()
+
+    assert not label.intersects(QRectF(100, 90, 200, 120))

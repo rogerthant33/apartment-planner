@@ -11,6 +11,7 @@ from apartment_planner.geometry.transform import XY
 MAX_STEPS = 60  # candidate positions per side of the room, at most
 GAP = 0.25  # space kept between a moved label and what it avoids, in label heights
 NOTHING: BaseGeometry = Polygon()  # no blockers
+BATCH = 256  # candidate positions tested together
 
 
 def label_anchor(room: Polygon) -> XY:
@@ -37,24 +38,35 @@ def label_position(room: Polygon, blockers: BaseGeometry, size: XY, anchor: XY) 
     if not shapely.box(x - half_w, y - half_d, x + half_w, y + half_d).intersects(blockers):
         return anchor
     min_x, min_y, max_x, max_y = room.bounds
+    nearby = shapely.clip_by_rect(blockers, min_x, min_y, max_x, max_y)
+    shapely.prepare(nearby)
     step = max(min(width, depth) / 2, max(max_x - min_x, max_y - min_y) / MAX_STEPS)
     xs = _steps(min_x + half_w, max_x - half_w, step, through=x)
     ys = _steps(min_y + half_d, max_y - half_d, step, through=y)
-    centres = [(cx, cy) for cx in xs for cy in ys]
-    labels = shapely.box(
-        [cx - half_w for cx, _ in centres],
-        [cy - half_d for _, cy in centres],
-        [cx + half_w for cx, _ in centres],
-        [cy + half_d for _, cy in centres],
-    )
-    inside = shapely.contains(room, labels)
-    covered = shapely.area(shapely.intersection(labels, blockers))
-    fits = [
-        (area, math.dist(c, anchor), c)
-        for c, ok, area in zip(centres, inside, covered, strict=True)
-        if ok
-    ]
-    return min(fits, default=(0.0, 0.0, anchor))[2]  # the least covered, then the nearest
+    # Nearest first, a batch at a time: a clear spot is usually close by.
+    centres = sorted(((cx, cy) for cx in xs for cy in ys), key=lambda c: math.dist(c, anchor))
+    in_room: list[tuple[XY, shapely.Geometry]] = []  # spots in the room, all overlapping
+    for start in range(0, len(centres), BATCH):
+        batch = centres[start : start + BATCH]
+        boxes = shapely.box(
+            [cx - half_w for cx, _ in batch],
+            [cy - half_d for _, cy in batch],
+            [cx + half_w for cx, _ in batch],
+            [cy + half_d for _, cy in batch],
+        )
+        inside = shapely.contains(room, boxes)
+        hit = shapely.intersects(nearby, boxes)
+        for centre, box, ok, blocked in zip(batch, boxes, inside, hit, strict=True):
+            if ok and not blocked:
+                return centre
+            if ok:
+                in_room.append((centre, box))
+    if not in_room:
+        return anchor
+    # Nowhere clear: the least covered spot (the nearest of equals, as they're sorted).
+    covered = shapely.area(shapely.intersection([box for _, box in in_room], nearby))
+    least = min(range(len(in_room)), key=lambda i: covered[i])
+    return in_room[least][0]
 
 
 def _steps(start: float, stop: float, step: float, through: float) -> list[float]:

@@ -139,8 +139,8 @@ class RoomItem(QGraphicsPolygonItem):
         flag: Severity | None = None,
         dimensions: bool = False,
         openings: Sequence[Opening] = (),
+        cm_per_px: float,
         blockers: BaseGeometry = NOTHING,
-        cm_per_px: float = 0.0,
         name: bool = True,
         area: bool = True,
     ) -> None:
@@ -155,7 +155,9 @@ class RoomItem(QGraphicsPolygonItem):
         self.setBrush(QBrush(QColor(room.color) if room.color else style.colours.room_fill))
 
         polygon = room_polygon(room)
-        lines = [room.name] * name + [format_area(polygon.area)] * area
+        lines = [
+            text for text, shown in ((room.name, name), (format_area(polygon.area), area)) if shown
+        ]
         self.label: TextLabel | None = None
         if lines:
             # Not a child: the scene draws it above furniture, which it may overlap.

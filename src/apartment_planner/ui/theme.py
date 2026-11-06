@@ -57,7 +57,7 @@ _STYLESHEET = """
 QToolBar { spacing: 4px; padding: 4px 6px; border: none; }
 QToolBar QToolButton { padding: 5px 9px; border-radius: 6px; }
 QToolBar QToolButton:hover { background: {chip}; }
-QToolBar QToolButton:checked { background: {accent_soft}; color: {accent}; }
+QToolBar QToolButton[tool="true"]:checked { background: {accent_soft}; color: {accent}; }
 QDockWidget { font-weight: 600; }
 QDockWidget::title { padding: 8px 10px 2px 10px; }
 QDockWidget > QWidget { font-weight: normal; }
