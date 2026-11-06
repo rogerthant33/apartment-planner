@@ -142,7 +142,14 @@ def _draw(
         scene = PlanScene()
         depth = doc.settings.default_clearance
         findings = check_fit(doc.apartment, doc.active_layout, depth) if warnings else []
-        scene.sync(doc, frozenset(), editable=False, findings=findings, dimensions=True)
+        scene.sync(
+            doc,
+            frozenset(),
+            editable=False,
+            findings=findings,
+            dimensions=True,
+            cm_per_px=1 / per_cm,
+        )
         scene.preview.hide()
         scene.render(painter, target, source, Qt.AspectRatioMode.KeepAspectRatio)
         band = BAND_HEIGHT

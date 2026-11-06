@@ -117,7 +117,10 @@ after confirmation), Show in Folder, and changing the projects folder.
   minimum 3).
 - Add, rename, duplicate and delete rooms. Each room has a name label at its
   centroid (or inside it, for shapes whose centroid falls outside) and shows
-  its area. The selected room shows its edge lengths. Duplicate (Ctrl+D)
+  its area. When furniture or an obstacle covers that spot, the label moves to
+  the nearest spot in the room where it's clear of them, with a small gap (or,
+  at a zoom where none is clear, where it covers least). Room labels are drawn
+  above furniture, and are placed the same way in exports. The selected room shows its edge lengths. Duplicate (Ctrl+D)
   copies every selected room; each copy is named "<name> copy", copies the
   room's openings and is offset by 50 cm. Copies (duplicated or pasted) only
   take in furniture that stood in no room; furniture keeps the room it was in,
