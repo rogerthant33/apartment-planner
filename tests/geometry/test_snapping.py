@@ -182,9 +182,15 @@ def test_a_degenerate_edge_is_snapped_to_as_a_point_with_no_slide() -> None:
 
 
 def test_measurements_snap_to_rooms_and_furniture_alike() -> None:
-    table = rect_item(40, 40, x=500, y=500)
+    desk = rect_item(100, 50, rotation=37)  # centred on the origin
 
-    targets = measure_targets([rect_room(0, 0, 100, 100)], [table])
+    targets = measure_targets([rect_room(0, 0, 100, 100)], [desk])
 
-    assert targets.vertices[3:5] == pytest.approx([(0, 100), (480, 480)])
-    assert len(targets.edges) == 8
+    room_corner, desk_corner = targets.vertices[3:5]
+    assert [*room_corner, *desk_corner] == pytest.approx([0, 100, -24.8864, -50.0566], abs=1e-4)
+    assert targets.edges[4] == (targets.vertices[4], targets.vertices[5])
+    assert len(targets.edges) == len(targets.vertices) == 8
+
+
+def test_nothing_to_measure_against_gives_no_targets() -> None:
+    assert measure_targets([], []) == SnapTargets()

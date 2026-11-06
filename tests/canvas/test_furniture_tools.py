@@ -201,3 +201,14 @@ def test_measuring_snaps_to_furniture_corners_and_changes_nothing(
     assert view.plan.preview.label_texts == ["219.3 cm"]
     assert messages[-1] == "Distance: 219.3 cm (200 cm horizontal, 90 cm vertical)"
     assert view.state.doc is before and not view.state.can_undo
+
+
+def test_measuring_snaps_only_to_what_is_shown_now(view: PlanView, messages: list[str]) -> None:
+    sofa, _ = ids(view)
+    view.set_tool("measure")
+
+    drag(view, (4, 52))  # the first point, by the room's left wall (x=0)
+    view.set_hidden(frozenset({sofa}))
+    drag(view, (97, 52))  # by the hidden sofa's left edge (x=100): no snap
+
+    assert messages[-1] == "Distance: 97 cm"

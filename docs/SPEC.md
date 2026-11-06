@@ -296,8 +296,11 @@ horizontal and vertical parts when it's on a slant ("250 cm (200 cm
 horizontal, 150 cm vertical)"). Each end snaps within 10 px to the corners and
 edges of rooms and of visible furniture and obstacles, but not to the grid;
 Alt (or snapping turned off in the project settings) measures freely. A click
-that doesn't move 4 px waits for the second point, and a second point on the
-first one is ignored. Zooming and other redraws keep the measurement shown. Measuring changes nothing: no undo step, nothing saved,
+that doesn't move 4 px waits for the second point; a second click within 4 px
+of the first, or snapping onto it, is ignored, and a drag that snaps back onto
+its start measures nothing. Snapping follows what's shown at the time (hidden
+furniture doesn't count). Zooming and other redraws keep any tool's preview,
+the measurement included. Measuring changes nothing: no undo step, nothing saved,
 and it works while the apartment is locked or the project is read-only.
 
 ## 7. Fit checking
